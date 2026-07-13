@@ -1,0 +1,22 @@
+# DDCS memory profile: 4 vCPU x 16GB RAM
+# Source: https://docs.omniverse.nvidia.com/ovcaches/ddcs/latest/configure.html#memory-configuration
+#
+# Merge with a platform values file when the DDCS node has 16GB RAM:
+#   helm install ddcs ... -f ddcs-gcp-g4-values.yaml -f ddcs-memory-16gb.yaml
+#
+# The chart default (cf.max_write_buffer_number: 8) is too small for write-heavy
+# workloads and can cause "multi part value is not complete" write failures.
+
+cluster:
+  container:
+    resources:
+      requests:
+        memory: 16Gi
+
+    settings:
+      engine:
+        sys.cache_size: "4G"
+        sys.block_cache_size: "8G"
+        cf.max_write_buffer_number: 64
+        sys.increase_parallelism: 4
+        db.max_background_jobs: 4

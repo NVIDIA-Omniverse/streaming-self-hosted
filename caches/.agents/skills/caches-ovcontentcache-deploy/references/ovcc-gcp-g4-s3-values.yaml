@@ -1,0 +1,92 @@
+# S3-only example for GKE. OVCC supports multiple backends at once (S3, GCS, Azure Blob,
+# Nucleus); each additional backend needs its own persistence.volumes, nginx.backends, and
+# nginx.proxyCache.paths entry.
+#
+# Requires a values file because the chart defaults enable all four backends (azure, s3,
+# gcs, nucleus) and create their PVCs. Helm --set appends to lists rather than replacing
+# them, which leaves orphan PVCs that cannot bind. Disable every backend you do not use.
+#
+# The chart is "ovcontentcache" but the container image stays "usd-content-cache"
+# (4.0.x is a chart rename only; appVersion 3.0.1 pins the image tag).
+#
+# Usage:
+#   helm install ovcc nvidia-omniverse/ovcontentcache \
+#     --version 4.0.4 \
+#     -f ovcc-gcp-g4-s3-values.yaml \
+#     --set image.repository=<org>/usd-content-cache \
+#     --set image.pullSecrets[0].name=ngc-secret \
+#     --set tls.secretName=ovcc-tls \
+#     --namespace ovcc --wait --timeout 5m
+#
+# No fullnameOverride: the chart default nameOverride is "ovcc", so installing with the
+# release name "ovcc" collapses <release>-<name> to "ovcc". Endpoint is
+# https://ovcc.ovcc.svc.cluster.local:14128. ovcc-overrides.yaml references that host.
+
+# No CPU requests or limits. OVCC is bursty and non-competitive with GPU
+# workloads. It should consume as much CPU as available during cache population bursts
+# without being throttled by Kubernetes resource quotas.
+
+replicaCount: 1
+
+persistence:
+  # Pinned to hyperdisk-extreme on GKE g4: at 128 GiB, hyperdisk-extreme
+  # write throughput beats untuned hyperdisk-balanced by ~1.7x. For non-g4
+  # machine families, override via `--set persistence.storageClassName=...`
+  # (GKE n2 -> pd-extreme-rwo; EKS -> gp3; AKS -> managed-csi-premium-burst).
+  storageClassName: hyperdisk-extreme
+  volumes:
+    - name: s3
+      path: /proxy_cache_s3
+      # Chart default 2048 (2 TiB). Safe across StorageClasses; do not
+      # shrink without verifying the target class delivers required
+      # IOPS/throughput at the smaller size.
+      sizeGi: 128
+      minFreeSizePercentage: 7
+
+nginx:
+  backends:
+    s3:
+      include: true
+    gcs:
+      # GCS is enabled by default at chart v4.0.4; disable it explicitly when unused
+      # or OpenResty fails at startup with `"proxy_cache" zone "gcs" is unknown`.
+      include: false
+    azure:
+      include: false
+    nucleus:
+      include: false
+  proxyCache:
+    paths:
+      - name: s3
+        path: /proxy_cache_s3/data
+        maxIdleTime: 1d
+        metadataMemorySize: 1024m
+
+# Places OVCC on g4 GPU nodes because they offer 400 Gbps network bandwidth and
+# Hyperdisk support. Compute-only nodes (n2, c4-standard) cap at 32-100 Gbps,
+# which bottlenecks cache serving when multiple WRWs stream assets simultaneously.
+nodeSelector:
+  cloud.google.com/gke-nodepool: gpu-pool
+
+tolerations:
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
+
+# Two OVCC pods must never share the same node (hard anti-affinity) so a single node
+# failure cannot take out multiple replicas.
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+                - ovcontentcache
+        topologyKey: kubernetes.io/hostname
+
+metrics:
+  prometheus:
+    podMonitoring:
+      enabled: true

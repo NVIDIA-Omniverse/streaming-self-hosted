@@ -1,0 +1,203 @@
+# NVCF Compute Plane Releases
+#
+# Two optional releases — installed once per GPU cluster:
+#   grove-operator   — optional; topology-aware scheduling (addons.groveOperator.enabled)
+#   dynamo-operator  — optional; Dynamo inference framework scheduling (addons.dynamoOperator.enabled)
+#
+# CLUSTER_NAME is required and scopes the registration values handoff file.
+# Run `make register-cluster CLUSTER_NAME=<name>` before `make install`.
+
+environments:
+  default:
+    values:
+      - ../environments/base.yaml
+      - ../environments/{{ requiredEnv "HELMFILE_ENV" }}.yaml
+
+---
+
+repositories:
+  - name: nvidia-ai-dynamo-grove
+    url: ghcr.io/ai-dynamo/grove
+    oci: true
+  - name: nvidia-ai-dynamo
+    url: https://helm.ngc.nvidia.com/nvidia/ai-dynamo
+
+helmDefaults:
+  createNamespace: true
+  devel: true
+  timeout: 900
+  wait: true
+  waitForJobs: true
+  diffArgs:
+    - "--dry-run=server"
+
+releases:
+
+  - name: grove-operator
+    # Topology-aware scheduling operator (optional; disabled by default).
+    # Enable per-environment: addons.groveOperator.enabled: true
+    condition: addons.groveOperator.enabled
+    chart: nvidia-ai-dynamo-grove/grove-charts
+    version: v0.1.0-alpha.9
+    namespace: grove-system
+    values:
+      - ../global.yaml.gotmpl
+      - replicaCount: 1
+        image:
+          repository: ghcr.io/ai-dynamo/grove/grove-operator
+          tag: v0.1.0-alpha.9
+        resources:
+          limits:
+            memory: 1Gi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        {{- if .Values.global.nodeSelector.enabled -}}
+        nodeSelector:
+          {{ .Values.global.nodeSelector.key }}: {{ .Values.global.nodeSelector.value }}
+        {{- end }}
+        {{- if not (empty .Values.global.tolerations) -}}
+        tolerations:
+        {{- toYaml .Values.global.tolerations | nindent 8 }}
+        {{- end }}
+        podAnnotations: {}
+        config:
+          leaderElection:
+            enabled: true
+            leaseDuration: 15s
+            renewDeadline: 10s
+            retryPeriod: 2s
+            resourceName: grove-operator-leader-election
+          logLevel: info
+          logFormat: json
+          controllers:
+            podCliqueSet:
+              concurrentSyncs: 3
+            podClique:
+              concurrentSyncs: 3
+            podCliqueScalingGroup:
+              concurrentSyncs: 3
+          {{- with .Values.addons.groveOperator.topologyAwareScheduling }}
+          topologyAwareScheduling:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.addons.groveOperator.network }}
+          network:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          server:
+            webhooks:
+              port: 9443
+              certProvisionMode: auto
+              secretName: grove-webhook-server-cert
+            healthProbes:
+              enable: true
+              port: 9444
+            metrics:
+              port: 9445
+        # Leave the webhook server secret to the operator's own auto-provision
+        # flow so Helm upgrades do not overwrite it.
+        webhookServerSecret:
+          enabled: false
+        # Init container that SSAs Grove CRDs on every pod startup. Helm does not
+        # upgrade CRDs on `helm upgrade`, so this covers both install and upgrade.
+        crdInstaller:
+          enabled: true
+    labels:
+      release-group: workers
+    wait: true
+    waitForJobs: true
+
+  - name: dynamo-operator
+    # Dynamo inference framework scheduling operator (optional; disabled by default).
+    # Enable per-environment: addons.dynamoOperator.enabled: true
+    condition: addons.dynamoOperator.enabled
+    chart: nvidia-ai-dynamo/dynamo-platform
+    version: 1.2.1
+    namespace: dynamo-system
+    needs:
+      - grove-system/grove-operator
+    values:
+      - ../global.yaml.gotmpl
+      - dynamo-operator:
+          controllerManager:
+            manager:
+              image:
+                repository: nvcr.io/nvidia/ai-dynamo/kubernetes-operator
+            resources:
+              limits:
+                memory: 2Gi
+              requests:
+                cpu: 512m
+                memory: 1Gi
+            replicas: 1
+            {{- if .Values.global.nodeSelector.enabled -}}
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                  - matchExpressions:
+                    - key: {{ .Values.global.nodeSelector.key | quote }}
+                      operator: In
+                      values:
+                      - {{ .Values.global.nodeSelector.value | quote }}
+            {{- end }}
+            {{- if not (empty .Values.global.tolerations) -}}
+            tolerations:
+            {{- toYaml .Values.global.tolerations | nindent 12 }}
+            {{- end }}
+          upgradeCRD: true
+          webhook:
+            failurePolicy: Fail
+            certManager:
+              enabled: false
+          namespaceRestriction:
+            enabled: false
+        nats:
+          jetstream:
+            enabled: true
+            fileStore:
+              enabled: true
+              pvc:
+                enabled: true
+          {{- $ns := .Values.global.nodeSelector -}}
+          {{- $tol := .Values.global.tolerations -}}
+          {{- if or (and .Values.global.nodeSelector.enabled (not (empty $ns))) (not (empty $tol)) }}
+          podTemplate:
+            merge:
+              spec:
+                # Pin NATS pods to control-plane / monitoring nodes; required for
+                # JetStream PVC attachment in some clusters (e.g. OCI). Override
+                # this nodeSelector per environment when no `monitoring` node
+                # group exists (e.g. local k3d).
+                {{- with $ns }}
+                {{- if and .key .value }}
+                nodeSelector:
+                  {{ .key }}: {{ .value }}
+                {{- end }}
+                {{- end }}
+                {{- with $tol }}
+                tolerations:
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+        {{- end }}
+        global:
+          nats:
+            install: true
+          etcd:
+            enabled: false
+            install: false
+          grove:
+            enabled: true
+            install: false
+          kai-scheduler:
+            # NVCA injects KAI scheduler config into workload pod specs; the
+            # operator chart itself does not need to wire to KAI.
+            enabled: false
+            install: false
+        metricsService:
+          enabled: true
+    labels:
+      release-group: workers
+    wait: true
+    waitForJobs: true

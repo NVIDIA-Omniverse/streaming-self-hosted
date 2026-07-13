@@ -1,0 +1,35 @@
+# streaming-env-aws.sh.example
+#
+# AWS deployment environment. Copy to `streaming-env.sh` (gitignored) and
+# fill in for the deployment. All skills source this file.
+#
+#   cp streaming-env-aws.sh.example streaming-env.sh
+#   chmod 600 streaming-env.sh
+#   $EDITOR streaming-env.sh
+#
+# Generated stage scripts source it themselves. To run pieces interactively:
+#   source ./streaming-env.sh
+
+# --- AWS identity + region ----------------------------------------------------
+
+export NGC_API_KEY=''
+export AWS_ACCESS_KEY_ID=''
+export AWS_SECRET_ACCESS_KEY=''
+export AWS_REGION=''
+export AWS_ACCOUNT_ID=''
+
+# --- Storage ------------------------------------------------------------------
+
+export S3_BUCKET=
+export BUCKET_ACCESS_KEY_ID=""
+export BUCKET_SECRET_ACCESS_KEY=""
+
+# --- Cluster ------------------------------------------------------------------
+
+# Mode-600 file containing the raw NGC API key (single line, no newline).
+# Consumed by ecr-mirror, nvcf-self-managed-installation, etc.
+export NGC_API_KEY_FILE="$HOME/.nvcf-secrets/ngc-api-key"
+
+# Per-skill optional overrides (network sizing, pool instance types, GPU SKU,
+# GPU operator chart version, etc.) — see each skill's Inputs table. Set the
+# corresponding env var here only when overriding the documented default.

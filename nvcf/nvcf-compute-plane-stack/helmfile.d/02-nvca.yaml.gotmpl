@@ -1,0 +1,139 @@
+# NVCF Compute Plane Releases
+#
+# NVCA release — installed once per GPU cluster:
+#   nvca-operator    — required; connects this cluster to the NVCF control plane
+#
+# CLUSTER_NAME is required and scopes the registration values handoff file.
+# Run `make register-cluster CLUSTER_NAME=<name>` before `make install`.
+
+environments:
+  default:
+    values:
+      - ../environments/base.yaml
+      - ../environments/{{ requiredEnv "HELMFILE_ENV" }}.yaml
+
+---
+
+repositories:
+  - name: nvcf
+    url: {{ .Values.global.helm.sources.registry }}/{{ .Values.global.helm.sources.repository }}
+    oci: true
+
+helmDefaults:
+  createNamespace: true
+  devel: true
+  timeout: 900
+  wait: true
+  waitForJobs: true
+  diffArgs:
+    - "--dry-run=server"
+
+releases:
+
+  - name: nvca-operator
+    # Released chart from nvca-operator-deploy. The chart bakes its own
+    # image.tag + selfManaged.nvcaVersion (set by `make vendor-chart` from
+    # nvca-operator-deploy/.env), so no inline tag override is needed; the
+    # nvca + nvca-operator images are mirrored to the environment registry by
+    # regsync-configs.
+    chart: nvcf/helm-nvca-operator
+    version: {{ dig "nvcf-compute-plane-stack" "helm-nvca-operator" "1.12.7" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    namespace: nvca-operator
+    values:
+      - ../global.yaml.gotmpl
+      # Cluster-scoped registration values produced by
+      # `make register-cluster CLUSTER_NAME=<cluster>` — uses
+      # selfManaged.clusterId/clusterGroupId schema emitted by nvcf-cli and
+      # read by the nvca-operator chart.
+      - ../out/{{ requiredEnv "CLUSTER_NAME" }}-register-values.yaml
+      # Resolve operator + nvca images through global.image.{registry,repository}.
+      # The chart's image.tag and selfManaged.nvcaVersion defaults supply the
+      # actual image tag; this block only overrides repository and pullPolicy.
+      - image:
+          repository: {{ .Values.global.image.registry }}/{{ .Values.global.image.repository }}/nvca-operator
+          pullPolicy: IfNotPresent
+        nvcaImage:
+          repositoryOverride: {{ .Values.global.image.registry }}/{{ .Values.global.image.repository }}/nvca
+          pullPolicy: IfNotPresent
+        {{- /* Wire global.imagePullSecrets into the operator chart so the nvca-operator
+               Deployment carries imagePullSecrets, and the operator's reconciler propagates
+               the same secret reference to the namespaces it manages. */}}
+        {{- if .Values.global.imagePullSecrets }}
+        imagePullSecrets:
+        {{- toYaml .Values.global.imagePullSecrets | nindent 10 }}
+        {{- end }}
+        clusterName: {{ requiredEnv "CLUSTER_NAME" }}
+        ncaId: {{ requiredEnv "NCA_ID" }}
+        {{- $selfManaged := dig "nvcaOperator" "selfManaged" dict .Values.global }}
+        selfManaged:
+          identitySource: psat
+          {{- with dig "icmsServiceURL" "" $selfManaged }}
+          icmsServiceURL: {{ . | quote }}
+          {{- end }}
+          {{- with dig "icmsServiceHostHeaderOverride" "" $selfManaged }}
+          icmsServiceHostHeaderOverride: {{ . | quote }}
+          {{- end }}
+          {{- with dig "revalServiceURL" "" $selfManaged }}
+          revalServiceURL: {{ . | quote }}
+          {{- end }}
+          {{- with dig "revalServiceHostHeaderOverride" "" $selfManaged }}
+          revalServiceHostHeaderOverride: {{ . | quote }}
+          {{- end }}
+          {{- with dig "natsURL" "" $selfManaged }}
+          natsURL: {{ . | quote }}
+          {{- end }}
+          {{- with dig "natsHostOverride" "" $selfManaged }}
+          natsHostOverride: {{ . | quote }}
+          {{- end }}
+          imageCredHelper:
+            imageRepository: {{ .Values.global.image.registry }}/{{ .Values.global.image.repository }}/nvcf-image-credential-helper
+            {{- with dig "imageCredHelper" "imageTag" "" $selfManaged }}
+            imageTag: {{ . | quote }}
+            {{- end }}
+          sharedStorage:
+            imageRepository: {{ .Values.global.image.registry }}/{{ .Values.global.image.repository }}/samba
+            {{- with dig "sharedStorage" "imageTag" "" $selfManaged }}
+            imageTag: {{ . | quote }}
+            {{- end }}
+        webhookConfig:
+          imageConfig:
+            pullPolicy: IfNotPresent
+        {{- with dig "agentConfig" "mergeConfig" "" .Values }}
+        agentConfig:
+          mergeConfig: |
+{{ . | nindent 12 }}
+        {{- end }}
+        {{- $networkPolicy := dig "networkPolicy" dict .Values }}
+        {{- with $networkPolicy }}
+        networkPolicy:
+{{ toYaml . | nindent 10 }}
+        {{- end }}
+        {{- $nvcaOp := dig "nvcaOperator" dict .Values.global }}
+        {{- if .Values.global.nodeSelector.enabled -}}
+        nodeSelector:
+          key: {{ .Values.global.nodeSelector.key }}
+          value: {{ .Values.global.nodeSelector.value }}
+        {{- end }}
+        {{- if not (empty .Values.global.tolerations) -}}
+        tolerations:
+        {{- toYaml .Values.global.tolerations | nindent 8 }}
+        {{- end }}
+        {{- $agent := dig "agent" dict $nvcaOp }}
+        {{- $agentTolerations := dig "tolerations" list $agent }}
+        {{- $workloadTolerations := dig "workload" "tolerations" list $agent }}
+        {{- if or $agentTolerations $workloadTolerations }}
+        agent:
+          {{- with $agentTolerations }}
+          tolerations:
+{{ toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $workloadTolerations }}
+          workload:
+            tolerations:
+{{ toYaml . | nindent 14 }}
+          {{- end }}
+        {{- end }}
+    labels:
+      release-group: workers
+    wait: true
+    waitForJobs: true

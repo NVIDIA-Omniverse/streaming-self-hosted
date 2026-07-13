@@ -1,0 +1,86 @@
+version: '26.07.0'
+generated_at: '2026-07-10T15:54:12Z'
+nvcf-self-managed-stack:
+  # source package: nvcf-stack 0.6.0
+  admin-token-issuer-proxy: 1.0.2
+  alpine-k8s: 1.36.1-ea
+  bitnami-cassandra: 5.0.6-nv-1-ea
+  cert-manager-cainjector: v1.20.2
+  cert-manager-controller: v1.20.2
+  cert-manager-startupapicheck: v1.20.2
+  cert-manager-webhook: v1.20.2
+  ess-agent: 1.3.1
+  ess-api: v0.57.26
+  helm-admin-token-issuer-proxy: 1.4.3
+  helm-nvcf-api: 1.23.6
+  helm-nvcf-api-keys: 1.6.0
+  helm-nvcf-cassandra: 0.15.5
+  helm-nvcf-cert-manager: 0.1.0
+  helm-nvcf-ess-api: 1.6.1
+  helm-nvcf-grpc-proxy: 1.6.7
+  helm-nvcf-invocation-service: 1.5.5
+  helm-nvcf-llm-api-gateway: 1.2.0
+  helm-nvcf-llm-request-router: 1.6.3
+  helm-nvcf-nats: 0.7.1
+  helm-nvcf-nats-auth-callout-service: 1.1.3
+  helm-nvcf-notary-service: 1.4.2
+  helm-nvcf-nvct-api: 1.4.3
+  helm-nvcf-openbao-server: 0.30.23
+  helm-nvcf-rate-limiter: 1.0.3
+  helm-nvcf-sis: 1.18.3
+  helm-nvcf-state-metrics: 1.0.1
+  helm-nvcf-vanity-gateway: 0.1.0-nvcf-10204.1
+  helm-reval: 1.3.8
+  nats-box: 0.19.7-nonroot
+  nats-server: 2.11.17-alpine3.22
+  nats-server-config-reloader: 0.23.0-ea
+  notary-service: 1.8.1
+  nvcf-api-keys-service: 1.5.0
+  nvcf-cassandra-migrations: 0.8.1-ea
+  nvcf-gateway-routes: 1.14.0
+  nvcf-grpc-proxy: 1.29.1
+  nvcf-invocation-service: 0.8.5
+  nvcf-nats-auth-callout-service: 0.5.10
+  nvcf-openbao: 2.5.4-nv-1.3.0-ea
+  nvcf-openbao-migrations: 0.16.1
+  nvcf-service-oss: 1.9.0-hotfix.1
+  nvcf_worker_init: 1.0.1
+  nvcf_worker_llm_credentials: 1.0.1
+  nvcf_worker_niclls: 2.109.4
+  nvcf_worker_utils: 1.0.1
+  nvct-service-oss: 1.5.9-hotfix.1
+  oss-vault-k8s: 1.7.4
+  pylon: 0.3.1
+  reval-server: 0.2.2
+  spot: 1.563.1-hotfix.1
+nvcf-compute-plane-stack:
+  # source package: nvcf-compute-plane-stack 1.0.6
+  helm-nvca-operator: 1.12.7
+  nvca: 3.0.3
+  nvca-operator: 3.0.3
+  nvcf-image-credential-helper: 0.10.2
+container_cache:
+  helm-nvcf-container-cache: 0.25.22
+  nvcf-container-cache: v1.1.36
+  nvcf-proxy-tls-certs: v1.2.10
+gxcache:
+  gxcache: 0.8.2
+  gxcache-init: 1e47f722
+  gxcache-service: b206ce39
+  gxcache-webhook: 59bd8ec5
+  helm-gxcache: 0.8.2
+ucc:
+  helm-ovcontentcache: 4.0.4
+  usd-content-cache: 3.0.1
+ddcs:
+  ddcs-dist-kv: 5.0.0
+  helm-ddcs: 5.0.0
+lls:
+  gdn-streaming: 3.0.0
+  streaming-proxy: 3.0.2
+  turn: 3.0.2
+storage-api:
+  helm-discovery-service: 2.3.8
+  helm-storage-service: 1.0.2
+  simple-nginx: 1.0.2
+  storage-service: 1.0.2

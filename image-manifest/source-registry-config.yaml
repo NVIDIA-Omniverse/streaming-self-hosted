@@ -1,0 +1,101 @@
+# Source registry paths and GitLab project mappings for each upstream plugin.
+# Used by aggregation, validation, and mirroring to resolve image locations per component.
+#
+# gitlab_project_path: upstream GitLab project (see .gitlab/component-to-project.yaml).
+#   For validate_component_artifacts registry checks, this path is turned into the same slug as
+#   receive (slashes → hyphens).
+#
+# source_registry: NGC OCI registry where this plugin's container images are sourced from.
+#   Used by ecr_scanner and skopeo mirror operations.
+#
+# helm_repo_url: if present, helm charts for this group are pulled via HTTP from this Helm
+#   repo (https://helm.ngc.nvidia.com/...) instead of OCI. Chart names on HTTP repos drop
+#   the "helm-" prefix used in manifest.yaml keys.
+#
+# Version pins live in versions.yaml; manifest.yaml is generated per pipeline.
+
+upstream_plugins:
+  # NVCF self-managed stack (control plane)
+  nvcf_self_managed_stack:
+    gitlab_project_path: "ncp/nvcf/nvcf-self-managed-stack"
+    source_registry: "nvcr.io/nvidia/nvcf"
+
+  # NVCF compute-plane stack (NVCA operator)
+  nvcf_compute_plane_stack:
+    gitlab_project_path: "nvcf/nvcf"
+    source_registry: "nvcr.io/nvidia/nvcf"
+
+  # Container cache
+  container_cache:
+    gitlab_project_path: "ncp/nvcf/application-services/nvcf-cache/nvcf-container-cache"
+    source_registry: "nvcr.io/nvidia/nvcf"
+
+  # NVCF Cassandra bits
+  nvcf_cassandra:
+    gitlab_project_path: ""
+    source_registry: "nvcr.io/0833294136851237/selfhosted-ga"
+
+  # NVCF alpine-k8s
+  alpine_k8s:
+    gitlab_project_path: ""
+    source_registry: "nvcr.io/0833294136851237/selfhosted-ga"
+
+  # NVCF NATS config reloader
+  nats_server_config_reloader:
+    gitlab_project_path: ""
+    source_registry: "nvcr.io/0833294136851237/selfhosted-ga"
+
+  # NVCF OpenBao
+  nvcf_openbao:
+    gitlab_project_path: ""
+    source_registry: "nvcr.io/0833294136851237/selfhosted-ga"
+
+  # NVCF NIC LLS worker
+  nvcf_worker_niclls:
+    gitlab_project_path: ""
+    source_registry: "nvcr.io/0833294136851237/selfhosted-ga"
+
+  # GXCache plugin
+  gxcache:
+    gitlab_project_path: ""
+    source_registry: "nvcr.io/0833294136851237/selfhosted-ga"
+
+  # LLS plugin
+  lls:
+    gitlab_project_path: ""
+    source_registry: "nvcr.io/0833294136851237/selfhosted-ga"
+
+  # USD Storage API plugins
+  # Multiple upstream repos contribute images to this file.
+  storage_api:
+    gitlab_project_path: "omniverse/usd-storage/api-storage/storage-service"
+    source_registry: "nvcr.io/nvidia/omniverse"
+    helm_repo_url: "https://helm.ngc.nvidia.com/nvidia/omniverse"
+
+  storage_notifications:
+    gitlab_project_path: "omniverse/usd-storage/api-notifications/event_consumer_service"
+    source_registry: "nvcr.io/nvidia/omniverse"
+
+  storage_event_aggregation:
+    gitlab_project_path: "omniverse/usd-storage/api-notifications/event_aggregation_service"
+    source_registry: "nvcr.io/nvidia/omniverse"
+
+  storage_permissions:
+    gitlab_project_path: "omniverse/usd-storage/api-permissions/permission-service"
+    source_registry: "nvcr.io/nvidia/omniverse"
+
+  storage_nginx:
+    gitlab_project_path: "omniverse/usd-storage/containers/simple-nginx"
+    source_registry: "nvcr.io/nvidia/omniverse"
+
+  # USD Content Cache
+  ucc:
+    gitlab_project_path: "omniverse/caches/ucc"
+    source_registry: "nvcr.io/nvidia/omniverse"
+    helm_repo_url: "https://helm.ngc.nvidia.com/nvidia/omniverse"
+
+  # Derived Data Cache Service
+  ddcs:
+    gitlab_project_path: "omniverse/caches/ddcs"
+    source_registry: "nvcr.io/nvidia/omniverse"
+    helm_repo_url: "https://helm.ngc.nvidia.com/nvidia/omniverse"
