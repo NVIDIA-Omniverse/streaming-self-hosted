@@ -1,5 +1,6 @@
-version: '26.07.0'
-generated_at: '2026-07-10T15:54:12Z'
+schema_version: '1.0'
+version: 26.07.0
+generated_at: '2026-07-13T14:49:12Z'
 nvcf-self-managed-stack:
   # source package: nvcf-stack 0.6.0
   admin-token-issuer-proxy: 1.0.2
