@@ -1,0 +1,51 @@
+version: 1
+
+skills:
+  nvcf-lls-install:
+    chart:
+      name: gdn-streaming
+      registry: oci://nvcr.io/0795883928596950/gdn-streaming
+      version: 3.0.0
+    images:
+      streaming-proxy:
+        source: nvcr.io/0795883928596950/streaming-proxy
+        tag: 3.0.2-rc.1
+        provider_validation_wrapper_tag: 3.0.2-rc.1
+      turn:
+        source: nvcr.io/0795883928596950/turn
+        tag: 3.0.1
+    ports:
+      udp_media: 5004
+      tcp_turn: 3478
+      tcp_turn_tls: 5349
+      tcp_turn_health: 8080
+      chart_node_port: 30504
+      sibling_lb_node_port: 30505
+      health_metrics: 8000
+    sync:
+      ref: lls/v3.0.0-rc.1
+      upstream_sha: 45cd02dde8e6adb91f7c28562fc86a9bf8f886c4
+
+  nvcf-gxcache:
+    chart:
+      name: helm-gxcache
+      registry: oci://nvcr.io/0833294136851237/nvcf-ncp-staging/helm-gxcache
+      version: 0.8.2
+    images:
+      gxcache-service:
+        source: nvcr.io/0833294136851237/nvcf-ncp-staging/gxcache-service
+        tag: b206ce39
+      gxcache-webhook:
+        source: nvcr.io/0833294136851237/nvcf-ncp-staging/gxcache-webhook
+        tag: 59bd8ec5
+      gxcache-init:
+        source: nvcr.io/0833294136851237/nvcf-ncp-staging/gxcache-init
+        tag: 1e47f722
+    sync:
+      ref: gxcache/v0.8.2-rc.5
+      upstream_sha: 89a1ab713aaf871dac315bea76120052197fe191
+
+notes:
+  - Each skill entry is composed from its own upstream ref so LLS and GXCache can advance independently.
+  - Provider paths may mirror these charts/images to another registry.
+  - Keep version bumps explicit and reviewed; downstream repos should update their lock files after syncing.

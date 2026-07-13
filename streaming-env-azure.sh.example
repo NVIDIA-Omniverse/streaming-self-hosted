@@ -1,0 +1,65 @@
+# streaming-env-azure.sh.example
+#
+# Azure deployment environment. Copy to `streaming-env.sh` (gitignored) and
+# fill in for the deployment. All skills source this file.
+#
+#   cp streaming-env-azure.sh.example streaming-env.sh
+#   chmod 600 streaming-env.sh
+#   $EDITOR streaming-env.sh
+#
+# Generated stage scripts source it themselves. To run pieces interactively:
+#   source ./streaming-env.sh
+
+# --- Azure subscription + identity --------------------------------------------
+
+export AZURE_SUBSCRIPTION_ID=""               # e.g. 60762596-e998-40df-8b39-796ed1f4f2ee
+
+# Comma-separated AAD object IDs granted kubectl cluster-admin. aks-cluster assigns each
+# one BOTH "Azure Kubernetes Service Cluster User Role" (to pull a kubeconfig) and "Azure
+# Kubernetes Service RBAC Cluster Admin" (in-cluster admin) on the cluster scope — required
+# because the cluster runs with disable_local_accounts=true. User OR group object IDs both
+# work. For your own user: az ad signed-in-user show --query id -o tsv
+export ADMIN_AAD_OBJECT_IDS=""                # e.g. <your-obj-id>,<teammate-obj-id>
+
+# Corp-egress CIDR(s) for API server allowlist. NOT a laptop /32 — see tf-conventions R3.
+export AUTHORIZED_IP_RANGES=""                # e.g. 10.0.0.0/8,203.0.113.0/24
+
+# --- Resource group, region, naming -------------------------------------------
+
+export LOCATION="westus3"                     # Azure region
+
+# CLUSTER_NAME drives the deployment. Other Azure resource names derive from
+# it via the <prefix>-<suffix> convention where suffix = ${CLUSTER_NAME#aks-}.
+# E.g. CLUSTER_NAME=aks-nvcf-validation-westus3 →
+#   RESOURCE_GROUP=rg-nvcf-validation-westus3
+#   VNET_NAME=vnet-nvcf-validation-westus3
+# Assignments are unconditional so re-sourcing this file after editing
+# CLUSTER_NAME always recomputes the derived names. To use different names,
+# edit the two `export` lines below directly.
+export CLUSTER_NAME=""                        # e.g. aks-nvcf-validation-westus3
+
+export RESOURCE_GROUP="rg-${CLUSTER_NAME#aks-}"
+export VNET_NAME="vnet-${CLUSTER_NAME#aks-}"
+
+# ACR + Storage account names — globally unique, lowercase alphanumeric, NO hyphens.
+export ACR_NAME=""                            # 5–50 chars; e.g. acrnvcfwestus3
+export STORAGE_ACCOUNT_NAME=""                # 3–24 chars; e.g. stnvcfwestus3
+export STORAGE_CONTAINERS="models,outputs,scratch"
+
+# --- Credentials + output format ----------------------------------------------
+
+# Mode-600 file containing the raw NGC API key (single line, no newline).
+# Consumed by acr-mirror, upstream nvcf-self-managed-installation, etc.
+export NGC_API_KEY_FILE="$HOME/.nvcf-secrets/ngc-api-key"
+
+# Sub-path under the ACR for mirrored images. Defaults to ${CLUSTER_NAME} so
+# multiple deployments sharing one ACR don't overwrite each other's tags.
+# See acr-mirror SKILL.md for the rationale and override conditions.
+export TARGET_REPOSITORY="${CLUSTER_NAME}"
+
+# Stage-script output format: "bash" (az CLI) or "terraform" (HCL modules).
+export OUTPUT_FORMAT="bash"
+
+# Per-skill optional overrides (network sizing, pool VM sizes, GPU SKU, GPU
+# operator chart version, etc.) — see each skill's Inputs table. Set the
+# corresponding env var here only when overriding the documented default.

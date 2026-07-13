@@ -1,0 +1,452 @@
+{
+  "displayName": "Derived Data Cache (DDCS)",
+  "mosaicLayout": {
+    "columns": 12,
+    "tiles": [
+      {
+        "width": 12,
+        "height": 1,
+        "widget": { "title": "Glance", "sectionHeader": { "subtitle": "Is DDCS alive and healthy?" } }
+      },
+      {
+        "yPos": 1, "width": 2, "height": 4,
+        "widget": {
+          "title": "gRPC Connections",
+          "scorecard": {
+            "timeSeriesQuery": { "prometheusQuery": "sum(ddcs_m_api_connections_total{kind=\"grpc\"})" }
+          }
+        }
+      },
+      {
+        "xPos": 2, "yPos": 1, "width": 2, "height": 4,
+        "widget": {
+          "title": "Uptime (s)",
+          "scorecard": {
+            "timeSeriesQuery": { "prometheusQuery": "max(ddcs_m_api_uptime_secs)" }
+          }
+        }
+      },
+      {
+        "xPos": 4, "yPos": 1, "width": 2, "height": 4,
+        "widget": {
+          "title": "GET/s (5m avg)",
+          "scorecard": {
+            "timeSeriesQuery": { "prometheusQuery": "sum(rate(ddcs_m_api_request_total{operation=\"get\"}[5m]))" }
+          }
+        }
+      },
+      {
+        "xPos": 6, "yPos": 1, "width": 2, "height": 4,
+        "widget": {
+          "title": "PUT/s (5m avg)",
+          "scorecard": {
+            "timeSeriesQuery": { "prometheusQuery": "sum(rate(ddcs_m_api_request_total{operation=\"put\"}[5m]))" }
+          }
+        }
+      },
+      {
+        "xPos": 8, "yPos": 1, "width": 2, "height": 4,
+        "widget": {
+          "title": "Cache Hit %",
+          "scorecard": {
+            "timeSeriesQuery": { "prometheusQuery": "sum(rate(ddcs_m_adapter_get_total[5m])) / clamp_min(sum(rate(ddcs_m_adapter_get_total[5m])) + sum(rate(ddcs_m_adapter_miss_total[5m])), 1) * 100" }
+          }
+        }
+      },
+      {
+        "xPos": 10, "yPos": 1, "width": 2, "height": 4,
+        "widget": {
+          "title": "API p99 (ms)",
+          "scorecard": {
+            "timeSeriesQuery": { "prometheusQuery": "histogram_quantile(0.99, sum by(le) (rate(ddcs_m_api_request_time_bucket[5m]))) * 1000" }
+          }
+        }
+      },
+
+      {
+        "yPos": 5, "width": 12, "height": 1,
+        "widget": { "title": "Infrastructure", "sectionHeader": { "subtitle": "Is the node overloaded?" } }
+      },
+      {
+        "yPos": 6, "width": 4, "height": 4,
+        "widget": {
+          "title": "Node CPU (cores)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "Used", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(rate(kubernetes_io:node_cpu_core_usage_time[5m]))" } },
+              { "plotType": "LINE", "legendTemplate": "Capacity", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(machine_cpu_cores)" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 4, "yPos": 6, "width": 4, "height": 4,
+        "widget": {
+          "title": "Node Memory (GiB)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "Used", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(kubernetes_io:node_memory_used_bytes) / 1073741824" } },
+              { "plotType": "LINE", "legendTemplate": "Total", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(kubernetes_io:node_memory_total_bytes) / 1073741824" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 8, "yPos": 6, "width": 4, "height": 4,
+        "widget": {
+          "title": "Network RX / TX (MB/s)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "RX", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(rate(kubernetes_io:node_network_received_bytes_count[5m])) / 1e6" } },
+              { "plotType": "LINE", "legendTemplate": "TX", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(rate(kubernetes_io:node_network_sent_bytes_count[5m])) / 1e6" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+
+      {
+        "yPos": 10, "width": 12, "height": 1,
+        "widget": { "title": "Volumes", "sectionHeader": { "subtitle": "PVC capacity and disk throughput — watch for fill and hyperdisk IOPS/throughput limits" } }
+      },
+      {
+        "yPos": 11, "width": 4, "height": 4,
+        "widget": {
+          "title": "PVC Used vs Capacity (GiB)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "Capacity", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~\".*ddcs.*\"}) / 1073741824" } },
+              { "plotType": "LINE", "legendTemplate": "Used", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~\".*ddcs.*\"} - kubelet_volume_stats_available_bytes{persistentvolumeclaim=~\".*ddcs.*\"}) / 1073741824" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 4, "yPos": 11, "width": 4, "height": 4,
+        "widget": {
+          "title": "PVC Free %",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "Free %", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(kubelet_volume_stats_available_bytes{persistentvolumeclaim=~\".*ddcs.*\"}) / sum(kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~\".*ddcs.*\"}) * 100" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 8, "yPos": 11, "width": 4, "height": 4,
+        "widget": {
+          "title": "PVC Disk Throughput (MB/s)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "Read", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(rate(kubernetes_io:pod_volume_read_bytes_count{persistentvolumeclaim=~\".*ddcs.*\"}[5m])) / 1e6" } },
+              { "plotType": "LINE", "legendTemplate": "Write", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(rate(kubernetes_io:pod_volume_write_bytes_count{persistentvolumeclaim=~\".*ddcs.*\"}[5m])) / 1e6" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+
+      {
+        "yPos": 15, "width": 12, "height": 1,
+        "widget": { "title": "API", "sectionHeader": { "subtitle": "gRPC request throughput, errors, and latency" } }
+      },
+      {
+        "yPos": 16, "width": 4, "height": 4,
+        "widget": {
+          "title": "Requests by Operation (per 5m)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum by(operation) (increase(ddcs_m_api_request_total[5m]))" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 4, "yPos": 16, "width": 4, "height": 4,
+        "widget": {
+          "title": "Errors by Operation (per 5m)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum by(operation) (increase(ddcs_m_api_errors_total[5m]))" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 8, "yPos": 16, "width": 4, "height": 4,
+        "widget": {
+          "title": "Keys per Request by Operation (per 5m)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum by(operation) (increase(ddcs_m_api_keys_total[5m]))" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "yPos": 20, "width": 6, "height": 4,
+        "widget": {
+          "title": "API Request Time Percentiles (ms)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "p50", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "histogram_quantile(0.5, sum by(le) (rate(ddcs_m_api_request_time_bucket[5m]))) * 1000" } },
+              { "plotType": "LINE", "legendTemplate": "p95", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "histogram_quantile(0.95, sum by(le) (rate(ddcs_m_api_request_time_bucket[5m]))) * 1000" } },
+              { "plotType": "LINE", "legendTemplate": "p99", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "histogram_quantile(0.99, sum by(le) (rate(ddcs_m_api_request_time_bucket[5m]))) * 1000" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 6, "yPos": 20, "width": 6, "height": 4,
+        "widget": {
+          "title": "API Requests/Second (5m rate)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "req/s", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(rate(ddcs_m_api_request_total[5m]))" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+
+      {
+        "yPos": 24, "width": 12, "height": 1,
+        "widget": { "title": "Adapter (Storage)", "sectionHeader": { "subtitle": "RocksDB adapter GET/PUT, cache hits, and I/O performance" } }
+      },
+      {
+        "yPos": 25, "width": 4, "height": 4,
+        "widget": {
+          "title": "GET by Level (per 5m)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum by(level) (increase(ddcs_m_adapter_get_total[5m]))" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 4, "yPos": 25, "width": 4, "height": 4,
+        "widget": {
+          "title": "MISS by Level (per 5m)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum by(level) (increase(ddcs_m_adapter_miss_total[5m]))" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 8, "yPos": 25, "width": 4, "height": 4,
+        "widget": {
+          "title": "PUT Rate (per 5m)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "PUTs", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(increase(ddcs_m_adapter_put_total[5m]))" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "yPos": 29, "width": 4, "height": 4,
+        "widget": {
+          "title": "Bytes In (PUT, MB/s)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "MB/s", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(rate(ddcs_m_adapter_put_bytes_total[5m])) / 1e6" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 4, "yPos": 29, "width": 4, "height": 4,
+        "widget": {
+          "title": "Bytes Out (GET, MB/s)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "MB/s", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum by(level) (rate(ddcs_m_adapter_bytes_returned_total[5m])) / 1e6" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 8, "yPos": 29, "width": 4, "height": 4,
+        "widget": {
+          "title": "Entry Cache Hit / Miss (per 5m)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum by(operation) (increase(ddcs_m_adapter_entry_cache_total[5m]))" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "yPos": 33, "width": 6, "height": 4,
+        "widget": {
+          "title": "RocksDB I/O p99 by Kind (ms)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "histogram_quantile(0.99, sum by(le, io_kind) (rate(ddcs_m_adapter_io_histogram_bucket[5m]))) * 1000" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 6, "yPos": 33, "width": 6, "height": 4,
+        "widget": {
+          "title": "Value Size Distribution p50 / p95 / p99 (bytes)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "p50", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "histogram_quantile(0.5, sum by(le) (rate(ddcs_m_adapter_value_size_histogram_bucket[5m])))" } },
+              { "plotType": "LINE", "legendTemplate": "p95", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "histogram_quantile(0.95, sum by(le) (rate(ddcs_m_adapter_value_size_histogram_bucket[5m])))" } },
+              { "plotType": "LINE", "legendTemplate": "p99", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "histogram_quantile(0.99, sum by(le) (rate(ddcs_m_adapter_value_size_histogram_bucket[5m])))" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+
+      {
+        "yPos": 37, "width": 12, "height": 1,
+        "widget": { "title": "Network", "sectionHeader": { "subtitle": "TCP throughput and write queue pressure" } }
+      },
+      {
+        "yPos": 38, "width": 4, "height": 4,
+        "widget": {
+          "title": "TCP RX / TX (MB/s)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "RX", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(rate(ddcs_m_api_tcp_rx_total[5m])) / 1e6" } },
+              { "plotType": "LINE", "legendTemplate": "TX", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(rate(ddcs_m_api_tcp_tx_total[5m])) / 1e6" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 4, "yPos": 38, "width": 4, "height": 4,
+        "widget": {
+          "title": "Write Queue Time p50 / p95 / p99 (ms)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "p50", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "histogram_quantile(0.5, sum by(le) (rate(ddcs_m_api_write_queue_time_bucket[5m]))) * 1000" } },
+              { "plotType": "LINE", "legendTemplate": "p95", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "histogram_quantile(0.95, sum by(le) (rate(ddcs_m_api_write_queue_time_bucket[5m]))) * 1000" } },
+              { "plotType": "LINE", "legendTemplate": "p99", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "histogram_quantile(0.99, sum by(le) (rate(ddcs_m_api_write_queue_time_bucket[5m]))) * 1000" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 8, "yPos": 38, "width": 4, "height": 4,
+        "widget": {
+          "title": "Writes Waiting",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "Queued", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum(ddcs_m_api_writes_waiting)" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+
+      {
+        "yPos": 42, "width": 12, "height": 1,
+        "widget": { "title": "RocksDB", "sectionHeader": { "subtitle": "Storage engine capacity and internals" } }
+      },
+      {
+        "yPos": 43, "width": 6, "height": 4,
+        "widget": {
+          "title": "Capacity (free bytes / % free)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "Free %", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "ddcs_m_adapter_capacity{name=\"p_free\"}" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 6, "yPos": 43, "width": 6, "height": 4,
+        "widget": {
+          "title": "RocksDB Block Cache / Memtable (bytes)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "ddcs_rocksdb_intrinsic_gauge" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "yPos": 47, "width": 6, "height": 4,
+        "widget": {
+          "title": "RocksDB Compaction Rate (bytes/s)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "ddcs_rocksdb_calculated_interval_bytes_per_second" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 6, "yPos": 47, "width": 6, "height": 4,
+        "widget": {
+          "title": "Adapter Active Tasks",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum by(task) (ddcs_m_adapter_active_task)" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+
+      {
+        "yPos": 51, "width": 12, "height": 1,
+        "widget": { "title": "Garbage Collection", "sectionHeader": { "subtitle": "GC activity and latency" } }
+      },
+      {
+        "yPos": 52, "width": 6, "height": 4,
+        "widget": {
+          "title": "GC Active Tasks",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "sum by(task) (ddcs_m_garbage_collection_active)" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 6, "yPos": 52, "width": 6, "height": 4,
+        "widget": {
+          "title": "GC Time p50 / p95 / p99 (ms)",
+          "xyChart": {
+            "dataSets": [
+              { "plotType": "LINE", "legendTemplate": "p50", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "histogram_quantile(0.5, sum by(le, operation) (rate(ddcs_m_garbage_collection_gc_time_histogram_bucket[5m]))) * 1000" } },
+              { "plotType": "LINE", "legendTemplate": "p95", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "histogram_quantile(0.95, sum by(le, operation) (rate(ddcs_m_garbage_collection_gc_time_histogram_bucket[5m]))) * 1000" } },
+              { "plotType": "LINE", "legendTemplate": "p99", "minAlignmentPeriod": "60s", "targetAxis": "Y1", "timeSeriesQuery": { "prometheusQuery": "histogram_quantile(0.99, sum by(le, operation) (rate(ddcs_m_garbage_collection_gc_time_histogram_bucket[5m]))) * 1000" } }
+            ],
+            "yAxis": { "scale": "LINEAR" }
+          }
+        }
+      }
+    ]
+  }
+}

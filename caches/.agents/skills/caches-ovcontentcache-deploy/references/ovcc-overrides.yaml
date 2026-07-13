@@ -1,0 +1,33 @@
+# OVCC overrides for simulation deployments.
+#
+# Prefer merging these keys into the same Helm values file used for every
+# simulation install and upgrade. If this file is used as a separate layer,
+# pass it on every helm upgrade; omitting it drops OVCC proxy wiring.
+#
+#   helm upgrade <release> <chart>                                       \
+#     -f values.yaml                                                     \
+#     -f ovcc-overrides.yaml                                             \
+#     --namespace <NAMESPACE> --wait --timeout 10m
+#
+# OVCC endpoint assumes OVCC is deployed in the "ovcc" namespace (the
+# default from caches-ovcontentcache-deploy). If OVCC is in a different
+# namespace, edit the URLs below to match.
+#
+# TLS is required on OVCC for Kit < 110. SSL verify flags are 0 for
+# the self-signed certificate.
+
+mega-core:
+  global:
+    extraEnv:
+      OMNICLIENT_HTTP_PROXY: "https://ovcc.ovcc.svc.cluster.local:14128"
+      OMNI_STORAGE_PROXY: "https://ovcc.ovcc.svc.cluster.local:14128"
+      OMNICLIENT_HTTP_PROXY_SSL_VERIFYHOST: "0"
+      OMNICLIENT_HTTP_PROXY_SSL_VERIFYPEER: "0"
+
+srtx:
+  write-render-worker:
+    extraEnvs:
+      OMNICLIENT_HTTP_PROXY: "https://ovcc.ovcc.svc.cluster.local:14128"
+      OMNI_STORAGE_PROXY: "https://ovcc.ovcc.svc.cluster.local:14128"
+      OMNICLIENT_HTTP_PROXY_SSL_VERIFYHOST: "0"
+      OMNICLIENT_HTTP_PROXY_SSL_VERIFYPEER: "0"

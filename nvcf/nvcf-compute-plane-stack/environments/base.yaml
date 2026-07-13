@@ -1,0 +1,69 @@
+global:
+
+  # =============================================================================
+  # Helm Chart Sources Configuration
+  # =============================================================================
+  helm:
+    sources:
+      registry: "nvcr.io"
+      repository: "nvidia/nvcf"
+
+  # =============================================================================
+  # Container Image Registry Configuration
+  # =============================================================================
+  image:
+    registry: nvcr.io
+    repository: nvidia/nvcf
+
+  # =============================================================================
+  # Image Pull Secrets
+  # =============================================================================
+  # Kubernetes imagePullSecrets applied to compute-plane workloads.
+  # Must reference pre-existing Kubernetes secrets in each managed namespace.
+  #
+  # Example: [{name: "my-registry-secret"}]
+  imagePullSecrets: []
+
+  # =============================================================================
+  # NVCA Operator Configuration
+  # =============================================================================
+  nvcaOperator:
+    selfManaged:
+      # ICMS (SIS) service URL — required; set per environment.
+      icmsServiceURL: ""
+      icmsServiceHostHeaderOverride: ""
+      # Reval service URL — required; set per environment.
+      revalServiceURL: ""
+      revalServiceHostHeaderOverride: ""
+      # NATS URL — required; set per environment.
+      natsURL: ""
+      natsHostOverride: ""
+
+  # =============================================================================
+  # Node Selector / Toleration Overlays
+  # =============================================================================
+  nodeSelector:
+    enabled: false
+    # key: nvcf.nvidia.com/workload
+    # value: worker
+
+  tolerations: []
+  # - key: nvcf.nvidia.com/workload
+  #   operator: Equal
+  #   value: worker
+  #   effect: NoSchedule
+
+# =============================================================================
+# Optional Add-on Operators
+# =============================================================================
+addons:
+
+  # Grove topology-aware scheduling operator (disabled by default)
+  groveOperator:
+    enabled: false
+    topologyAwareScheduling: {}
+    network: {}
+
+  # Dynamo inference framework scheduling operator (disabled by default)
+  dynamoOperator:
+    enabled: false

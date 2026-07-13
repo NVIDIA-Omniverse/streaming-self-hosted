@@ -1,0 +1,41 @@
+[
+  {
+    "id": "GX1-kubernetes-gxcache-install",
+    "question": "Install GXCache for NVCF on my Kubernetes cluster. The gxcache-init container is failing with InvalidImageName and the webhook is not injecting correctly.",
+    "expected_skill": "nvcf-gxcache",
+    "ground_truth": "The agent selected the provider-neutral GXCache skill, used the Kubernetes provider guide, asked for or required a downstream-rendered values file, preserved the chart's required image schema, set webhook.client.version.tag rather than only version, and checked NVCA CachingSupport plus worker namespace pull posture before declaring the install healthy.",
+    "expected_behavior": [
+      "The agent read nvcf-gxcache/SKILL.md and then providers/kubernetes.md before taking action",
+      "The agent treated node selectors, storage class, webhook TLS, and pull-secret setup as provider-specific details inside a generic GXCache workflow",
+      "The agent required a downstream-rendered values file instead of assuming this source repo ships provider values",
+      "The agent checked webhook.client.version.tag for the injected init image tag",
+      "The agent preserved the chart's distinct image shapes for webhook deployment, webhook client, and service image",
+      "The agent verified NVCA CachingSupport and worker pull posture before declaring end-to-end readiness"
+    ]
+  },
+  {
+    "id": "GX2-generic-provider-adaptation",
+    "question": "I need generic GXCache instructions for a self-managed Kubernetes cluster where the storage, registry, identity, and webhook TLS choices are still undecided.",
+    "expected_skill": "nvcf-gxcache",
+    "ground_truth": "The agent selected nvcf-gxcache for generic GXCache guidance, identified missing provider details, and used the provider-neutral workflow. It did not apply storage classes, node labels, registry identities, webhook TLS posture, or downstream values from another provider without adaptation.",
+    "expected_behavior": [
+      "The agent read nvcf-gxcache/SKILL.md as the main skill",
+      "The agent separated provider-neutral GXCache requirements from provider-specific storage, node, registry, and TLS decisions",
+      "The agent avoided provider-specific storage classes, node labels, registry names, and downstream values as generic copy/paste guidance",
+      "The agent asked for provider details or rendered a provider-specific plan before installation"
+    ]
+  },
+  {
+    "id": "GX3-mirrored-registry-provider",
+    "question": "Install GXCache using a mirrored provider registry. The injected gxcache-init image must come from the mirror, not directly from NGC.",
+    "expected_skill": "nvcf-gxcache",
+    "ground_truth": "The agent selected nvcf-gxcache, used the Kubernetes provider guide, preserved the GXCache chart image-schema guardrails, set GXCACHE_CHART_REF when the chart is mirrored, and conditionally planned a gxc-webhook-config registry-prefix rewrite plus webhook restart only if rendered/live init image references still point to the source registry, so worker pods do not need direct NGC pull secrets.",
+    "expected_behavior": [
+      "The agent read nvcf-gxcache/SKILL.md and then providers/kubernetes.md",
+      "The agent used mirrored chart and image assumptions without naming a specific provider registry",
+      "The agent set webhook.client.version.tag rather than only version",
+      "The agent conditionally planned the post-install gxc-webhook-config registry-prefix patch and gxcache-webhook rollout restart when rendered/live init image references still require source-to-mirror rewrite",
+      "The agent avoided copying storage, node label, registry identity, or TLS assumptions from another provider"
+    ]
+  }
+]

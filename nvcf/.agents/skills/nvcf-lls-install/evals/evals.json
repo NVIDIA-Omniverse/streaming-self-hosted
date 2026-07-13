@@ -1,0 +1,55 @@
+[
+  {
+    "id": "LLS1-kubernetes-streaming-install",
+    "question": "Install Low Latency Streaming for my NVCF deployment on Kubernetes. I need the streaming-proxy public UDP 5004 endpoint.",
+    "expected_skill": "nvcf-lls-install",
+    "ground_truth": "The agent selected the provider-neutral LLS skill, used the Kubernetes provider guide, required a downstream-rendered values file and UDP ingress artifact, installed the gdn-streaming chart only after confirming the nvcf-backend namespace exists, and exposed UDP 5004 through a provider-owned ingress path.",
+    "expected_behavior": [
+      "The agent read nvcf-lls-install/SKILL.md and then providers/kubernetes.md before taking action",
+      "The agent treated LoadBalancer, frontend address, registry, zone, and health-probe behavior as provider-specific details inside a generic LLS workflow",
+      "The agent required a downstream-rendered values file for chart overrides",
+      "The agent required a downstream UDP ingress manifest or provider-managed load balancer for public UDP 5004",
+      "The agent verified nvcf-backend exists before installing the gdn-streaming chart",
+      "The agent did not use a legacy VM/operator flow"
+    ]
+  },
+  {
+    "id": "LLS2-generic-provider-adaptation",
+    "question": "How do I install NVCF LLS on a generic self-managed Kubernetes cluster when the provider ingress and registry posture are still undecided?",
+    "expected_skill": "nvcf-lls-install",
+    "ground_truth": "The agent selected nvcf-lls-install for generic LLS guidance, identified missing provider details, and used the provider-neutral workflow. It did not apply frontend address, role, registry, service annotation, or downstream manifest assumptions from another provider without adaptation.",
+    "expected_behavior": [
+      "The agent read nvcf-lls-install/SKILL.md as the main skill",
+      "The agent separated provider-neutral LLS requirements from provider-specific ingress and registry decisions",
+      "The agent avoided provider-specific frontend address, registry identity, Service annotation, and downstream manifests as generic copy/paste guidance",
+      "The agent asked for provider details or rendered a provider-specific plan before installation"
+    ]
+  },
+  {
+    "id": "LLS3-mirrored-registry-provider",
+    "question": "Install NVCF LLS using a mirrored provider registry. We need streaming-proxy on public UDP 5004 and the chart/image pulled from the mirror.",
+    "expected_skill": "nvcf-lls-install",
+    "ground_truth": "The agent selected nvcf-lls-install, used the Kubernetes provider guide, set LLS_CHART_REF when the chart is mirrored, treated load-balancer and node-selector behavior as provider-specific, and did not require NGC Helm auth for a non-NVCR chart registry.",
+    "expected_behavior": [
+      "The agent read nvcf-lls-install/SKILL.md and then providers/kubernetes.md",
+      "The agent used mirrored chart and image assumptions without naming a specific provider registry",
+      "The agent planned a dedicated public UDP 5004 path targeting the configured streaming-proxy backend",
+      "The agent used the streaming node selector and public endpoint for env.lbDns",
+      "The agent avoided copying frontend address, role, registry, identity, or storage assumptions from another provider"
+    ]
+  },
+  {
+    "id": "LLS4-tcp-turn-provider-adaptation",
+    "question": "Enable TCP TURN for NVCF LLS on a self-managed Kubernetes cluster. The downstream repo will provide the load balancer and rendered values.",
+    "expected_skill": "nvcf-lls-install",
+    "ground_truth": "The agent selected nvcf-lls-install, kept provider load-balancer and registry details downstream-owned, required tcpTurn-enabled rendered values with the turn image, planned public TCP 3478 ingress to turn-service, and verified turn-service readiness plus TCP reachability from tcpTurn.enabled without adding deploy orchestration to the shared skill.",
+    "expected_behavior": [
+      "The agent read nvcf-lls-install/SKILL.md and then providers/kubernetes.md",
+      "The agent treated TCP TURN as optional and values-driven through tcpTurn.enabled",
+      "The agent required the downstream values file to include the turn image and tcpTurn public endpoint settings",
+      "The agent required a downstream-owned public TCP 3478 ingress path to turn-service",
+      "The agent verified turn-service rollout and TCP 3478 reachability when tcpTurn.enabled is true",
+      "The agent did not add CSP-specific load-balancer, firewall/security, or credential-management logic to this pure skill repo"
+    ]
+  }
+]

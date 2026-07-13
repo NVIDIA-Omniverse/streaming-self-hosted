@@ -1,0 +1,102 @@
+# DDCS Helm values for GKE g4 nodes WITHOUT a PersistentVolumeClaim.
+#
+# When `cluster.container.storage.volume.enabled` is false the chart renders no
+# volumeClaimTemplates and no `/env` mount. The DDCS binary still writes its
+# RocksDB at /env/env, which therefore lands on the container's writable layer
+# (overlayfs upperdir under /var/lib/containerd on the node).
+#
+# On g4 nodes labelled `cloud.google.com/gke-ephemeral-storage-local-ssd=true`
+# GKE wires the local NVMe SSDs into the node's ephemeral storage path, so
+# /var/lib/containerd (and therefore the RocksDB I/O) lives on local NVMe.
+# This is the fastest configuration available, at the cost of cache loss on
+# pod reschedule, node recreate, or node-pool scale-down.
+#
+# This file overrides what is required to make the no-PVC mode safe and placed
+# correctly, plus the 8 vCPU x 32GB RAM memory profile from the DDCS docs.
+#
+# Usage:
+#   helm install ddcs nvidia-omniverse/ddcs --version 5.0.0 \
+#     -f ddcs-gcp-g4-no-pvc-values.yaml \
+#     --set "image.pullSecrets[0].name=ngc-docker-reg-secret" \
+#     --namespace <NAMESPACE> --wait --timeout 5m
+#
+# Chart 5.0.0 pins image tag via appVersion -> nvcr.io/nvidia/omniverse/ddcs-dist-kv:5.0.0.
+# Override only with --set image.tag=<x> --set image.overrideTag=true if you need a
+# different image build.
+
+# Overrides the default service name (<release>-<chart>) to just "ddcs". The
+# mega-sim ddcs-overrides.yaml references ddcs:3010 for drivercachewrapper and
+# UJITSO endpoints.
+fullnameOverride: ddcs
+
+cluster:
+  # Places DDCS on GPU nodes with local NVMe-backed ephemeral storage. Select
+  # by stable node labels instead of a specific node pool name so DDCS can
+  # spread across equivalent GPU pools in larger clusters. Compute-only nodes
+  # (n2, c4-standard) cap at 32-100 Gbps and have no local NVMe by default,
+  # so dropping the PVC there falls back to the boot disk instead of NVMe.
+  nodeSelector:
+    cloud.google.com/gke-gpu: "true"
+    cloud.google.com/gke-ephemeral-storage-local-ssd: "true"
+
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+
+  # Two DDCS pods must never share the same node (hard). DDCS and UCC should
+  # prefer different nodes when possible (soft). Same as the PVC variant.
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - ddcs
+          topologyKey: kubernetes.io/hostname
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                    - usd-content-cache
+            topologyKey: kubernetes.io/hostname
+
+  container:
+    resources:
+      requests:
+        memory: 32Gi
+
+    storage:
+      volume:
+        # Disables PVC. With this off the chart removes volumeClaimTemplates
+        # AND the /env volume mount, so RocksDB writes at /env/env land on the
+        # container's writable filesystem layer (node ephemeral storage).
+        # On g4 nodes that path is backed by local NVMe SSD.
+        enabled: false
+
+    settings:
+      engine:
+        sys.cache_size: "10G"
+        sys.block_cache_size: "18G"
+        cf.max_write_buffer_number: 128
+        sys.increase_parallelism: 8
+        db.max_background_jobs: 8
+
+      grpc:
+        tls:
+          enabled: false
+        jwt:
+          enabled: false
+
+# Disables Prometheus Operator CRDs (ServiceMonitor, PrometheusRule) which are
+# not installed on GKE by default. GKE Managed Prometheus uses PodMonitoring
+# instead; apply the PodMonitoring manifest separately after install.
+monitoring:
+  enabled: false
+  prometheusAlerts: false
