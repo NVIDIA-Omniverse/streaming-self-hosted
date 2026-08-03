@@ -68,7 +68,7 @@ git commit -s -m "Your commit message"
 4. Ensure all SPDX license headers are present in new files
 5. Commit your changes with DCO sign-off (`git commit -s`)
 6. Push to your branch (`git push origin feature/my-feature`)
-7. Open a Pull Request on GitHub
+7. Open a Merge Request
 
 ## License
 

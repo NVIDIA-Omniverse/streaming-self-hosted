@@ -130,10 +130,3 @@ vault:
   vaultAddress: https://stg.vault.nvidia.com:443
   certLocation: http://crls-stg.vpki.nvidia.com/his3/mtk3n2i5ntk2ytjm/ca/pem
 
-traces:
-  # Enable/Disable tracing
-  enabled: false
-  # OpenTelemetry-Collector configuration.
-  collector:
-    # OpenTelemetry endpoint to send traces to.
-    endpoint: "prod.otel.kaizen.nvidia.com:8282"

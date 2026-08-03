@@ -235,23 +235,6 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
     {{- end }}
-    {{- if (.Values.traces).enabled }}
-        - name: opentelemetry-collector
-          image: {{ required "Property '.images.collector' is required." $.Values.images.collector | quote }}
-          imagePullPolicy: IfNotPresent
-          envFrom:
-            - secretRef:
-                name: otel-collector-access-token
-          volumeMounts:
-            - name: nvcf-collector-config
-              mountPath: /etc/otelcol-contrib/config.yaml
-              subPath: config.yaml
-          ports:
-            - name: grpc
-              containerPort: 4317
-            - name: http
-              containerPort: 4318
-    {{- end }}
       volumes:
       {{- if $.Values.vault.enabled }}
         - name: token
@@ -300,11 +283,6 @@ spec:
         - name: nginx-proxy-common-config
           configMap:
             name: nvcf-proxy-config
-{{- if (.Values.traces).enabled }}
-        - name: nvcf-collector-config
-          configMap:
-            name: nvcf-collector-config
-{{- end }}
         - name: certs
           emptyDir:
             medium: Memory

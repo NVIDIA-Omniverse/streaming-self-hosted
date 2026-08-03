@@ -1,11 +1,10 @@
 schema_version: '1.0'
-version: 26.07.0
-generated_at: '2026-07-13T14:49:12Z'
+version: 26.07.1
+generated_at: '2026-08-01T04:25:05Z'
 nvcf-self-managed-stack:
-  # source package: nvcf-stack 0.6.0
   admin-token-issuer-proxy: 1.0.2
-  alpine-k8s: 1.36.1-ea
-  bitnami-cassandra: 5.0.6-nv-1-ea
+  alpine-k8s: 1.36.1
+  cassandra: 5.0.8-nv-2.0.1
   cert-manager-cainjector: v1.20.2
   cert-manager-controller: v1.20.2
   cert-manager-startupapicheck: v1.20.2
@@ -13,49 +12,48 @@ nvcf-self-managed-stack:
   ess-agent: 1.3.1
   ess-api: v0.57.26
   helm-admin-token-issuer-proxy: 1.4.3
-  helm-nvcf-api: 1.23.6
+  helm-nvcf-api: 1.23.9
   helm-nvcf-api-keys: 1.6.0
-  helm-nvcf-cassandra: 0.15.5
+  helm-nvcf-cassandra: 0.18.0
   helm-nvcf-cert-manager: 0.1.0
   helm-nvcf-ess-api: 1.6.1
   helm-nvcf-grpc-proxy: 1.6.7
-  helm-nvcf-invocation-service: 1.5.5
-  helm-nvcf-llm-api-gateway: 1.2.0
-  helm-nvcf-llm-request-router: 1.6.3
+  helm-nvcf-invocation-service: 1.5.6
+  helm-nvcf-llm-api-gateway: 1.3.5
+  helm-nvcf-llm-request-router: 1.6.6
   helm-nvcf-nats: 0.7.1
   helm-nvcf-nats-auth-callout-service: 1.1.3
   helm-nvcf-notary-service: 1.4.2
   helm-nvcf-nvct-api: 1.4.3
-  helm-nvcf-openbao-server: 0.30.23
+  helm-nvcf-openbao-server: 0.30.25
   helm-nvcf-rate-limiter: 1.0.3
-  helm-nvcf-sis: 1.18.3
+  helm-nvcf-sis: 1.18.8
   helm-nvcf-state-metrics: 1.0.1
   helm-nvcf-vanity-gateway: 0.1.0-nvcf-10204.1
   helm-reval: 1.3.8
   nats-box: 0.19.7-nonroot
   nats-server: 2.11.17-alpine3.22
-  nats-server-config-reloader: 0.23.0-ea
+  nats-server-config-reloader: 0.23.0
   notary-service: 1.8.1
   nvcf-api-keys-service: 1.5.0
-  nvcf-cassandra-migrations: 0.8.1-ea
+  nvcf-cassandra-migrations: 0.10.3
   nvcf-gateway-routes: 1.14.0
   nvcf-grpc-proxy: 1.29.1
-  nvcf-invocation-service: 0.8.5
+  nvcf-invocation-service: 0.8.8
   nvcf-nats-auth-callout-service: 0.5.10
-  nvcf-openbao: 2.5.4-nv-1.3.0-ea
-  nvcf-openbao-migrations: 0.16.1
+  nvcf-openbao: 2.5.5-nv-1.3.1
+  nvcf-openbao-migrations: 0.16.2
   nvcf-service-oss: 1.9.0-hotfix.1
-  nvcf_worker_init: 1.0.1
-  nvcf_worker_llm_credentials: 1.0.1
+  nvcf-worker-init-oss: 1.0.9
+  nvcf-worker-llm-credentials-oss: 1.0.4
+  nvcf-worker-utils-oss: 1.0.4
   nvcf_worker_niclls: 2.109.4
-  nvcf_worker_utils: 1.0.1
   nvct-service-oss: 1.5.9-hotfix.1
   oss-vault-k8s: 1.7.4
-  pylon: 0.3.1
+  pylon: 0.3.2
   reval-server: 0.2.2
   spot: 1.563.1-hotfix.1
 nvcf-compute-plane-stack:
-  # source package: nvcf-compute-plane-stack 1.0.6
   helm-nvca-operator: 1.12.7
   nvca: 3.0.3
   nvca-operator: 3.0.3

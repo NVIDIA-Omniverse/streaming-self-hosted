@@ -9,7 +9,9 @@ description: |
   nvcf, nvcf-cli, self-hosted nvcf, self-managed nvcf, NVCFBackend, NVCA, NCP,
   ICMS, helmfile, control plane, compute plane, LLM function,
   OpenAI-compatible invocation, Responses API, embeddings, batch task, task
-  monitor, cluster rotate, cluster delete.
+  monitor, cluster rotate, cluster delete, helm task, helm-based task,
+  task secrets, update task secrets, retrieve task results, bulk fetch tasks,
+  task results.
 allowed-tools: Bash, Read, AskUserQuestion
 argument-hint: "[install|status|check|deploy-function|register-cluster|teardown] [args]"
 ---
@@ -39,6 +41,9 @@ Token Budget:
 - "preview what `down` would do" / "dry-run uninstall"
 - "create a task" / "run a task" / "submit a GPU job" / "monitor a task"
 - "cancel a task" / "delete a task" / "list tasks" / "list running tasks"
+- "run a helm-based task" / "helm task" / "submit a helm task"
+- "update secrets on my task" / "replace task secrets" / "task update-secrets"
+- "retrieve task results" / "bulk fetch task details" / "get task results"
 - Any reference to `NVCFBackend`, `NVCA`, ICMS, helm releases like `helm-nvcf-*`, or `icms.<domain>` / `api.<domain>` URLs.
 - Any reference to `nvcf-cli task` or batch tasks.
 
@@ -82,6 +87,56 @@ nvcf-cli self-hosted uninstall --no-apply --compute-plane --cluster-name=ncp-loc
 
 > **`down` always with `--plan-only` first.** Show the user the `willUninstall.commands[]` array before running for real.
 
+## Authentication
+
+`nvcf-cli` uses two credentials. Each is resolved independently in this order:
+
+| Precedence | Source |
+|---|---|
+| 1 (highest) | Environment variable (`NVCF_TOKEN`, `NVCF_API_KEY`) |
+| 2 | Config file (`~/.nvcf-cli.yaml`, keys `token` and `api_key`) |
+| 3 | State file (`~/.nvcf-cli.state`), skipped when the stored token is expired |
+
+| Env var | Token type | Used by |
+|---|---|---|
+| `NVCF_TOKEN` | Admin JWT | `function create` / `deploy` / `update` / `delete`, cluster management (`cluster register`/`rotate`/`delete`, `self-hosted` ops). Required for admin commands; preferred for the rest. |
+| `NVCF_API_KEY` | `nvapi-...` API key | `function invoke` / `list` / `get`, queue details. Falls back to `NVCF_TOKEN` when unset. |
+
+Token generation flow:
+
+1. Point the CLI at your self-hosted endpoints. Defaults target production NVCF; override with env vars or a yaml file (`--config <path>`, `./.nvcf-cli.yaml`, or `~/.nvcf-cli.yaml`; a full template ships at `src/clis/nvcf-cli/.nvcf-cli.yaml.template`).
+
+   `NVCF_BASE_HTTP_URL` / `API_KEYS_SERVICE_URL` / `NVCF_BASE_GRPC_URL` tell the CLI *where to send requests*. `API_HOST` / `API_KEYS_HOST` / `INVOKE_HOST` set the `Host:` header on those requests — needed when every NVCF service sits behind a single gateway that routes by hostname (Envoy Gateway HTTPRoute on `api.<ELB>`, `api-keys.<ELB>`, `invocation.<ELB>`, `llm.<ELB>`). Skip the three Host vars when the base URL already resolves to the right service.
+
+   Env-var form:
+   ```sh
+   export NVCF_BASE_HTTP_URL=https://gw.example.com
+   export API_KEYS_SERVICE_URL=https://gw.example.com
+   export NVCF_BASE_GRPC_URL=gw.example.com:443
+
+   # Only when the gateway routes by Host header:
+   export API_KEYS_HOST=api-keys.gw.example.com
+   export API_HOST=api.gw.example.com
+   export INVOKE_HOST=invocation.gw.example.com
+   ```
+
+   Yaml form (`~/.nvcf-cli.yaml`):
+   ```yaml
+   base_http_url: https://gw.example.com
+   api_keys_service_url: https://gw.example.com
+   base_grpc_url: gw.example.com:443
+
+   # Only when the gateway routes by Host header:
+   api_keys_host: api-keys.gw.example.com
+   api_host: api.gw.example.com
+   invoke_host: invocation.gw.example.com
+   ```
+
+2. `nvcf-cli init` calls the API Keys service via those endpoints and writes the admin token to `~/.nvcf-cli.state`. Use `nvcf-cli refresh` to rotate a stored token.
+3. After `init`, `nvcf-cli api-key generate` mints function + task API keys (also stored in state).
+
+After `init`, the credentials live in `~/.nvcf-cli.state`, so later commands work without exporting `NVCF_TOKEN` or `NVCF_API_KEY`. Export the env var only to override the stored value (for example a shorter-lived token from CI).
+
 ## Core subcommands
 
 | Subcommand | What it does | When to use |
@@ -121,6 +176,8 @@ nvcf-cli self-hosted uninstall --no-apply --compute-plane --cluster-name=ncp-loc
 | `nvcf-cli task delete [taskId]` | Delete a task record | **Confirm with user.** |
 | `nvcf-cli task update-secrets [taskId] --secrets NAME=value` | Replace all secrets on a task (full replacement) | |
 | `nvcf-cli task bulk --task-ids=ID1,ID2` | Fetch details for multiple tasks in one call | |
+
+> Registry credential propagation: after `registry-credential add`/`update`/`delete`, task creation can keep using the previous credential for up to about 5 minutes (NVCT caches account credentials at `nvct.nvcf.cache-ttl`, default `PT5M`), even though `registry-credential list`/`get` show the new value immediately. Wait about 5 minutes, or `kubectl -n nvcf rollout restart deployment/nvct-api` to apply immediately. See [reference/troubleshooting.md](reference/troubleshooting.md).
 
 ## LLM function type
 

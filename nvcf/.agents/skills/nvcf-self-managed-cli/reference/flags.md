@@ -132,7 +132,7 @@ In JSON, `function update` accepts `modelUpdates[]` entries with `modelName` and
 | `--container-args ARGS` | Args passed when launching the container | Single string, e.g. `"--epochs 10 --batch-size 32"` |
 | `--container-env NAME=value` | Container environment variable; repeatable | — |
 | `--secrets NAME=value` | Secret environment variable; repeatable; encrypted at rest | — |
-| `--max-runtime DURATION` | Max wall-clock run time (ISO 8601, e.g. `PT4H`) | No default |
+| `--max-runtime DURATION` | Max wall-clock run time (ISO 8601, e.g. `PT4H`) | No default; omit for no time limit |
 | `--max-queued DURATION` | Max time in queue before cancellation (ISO 8601) | Server default `PT72H` |
 | `--termination-grace DURATION` | Grace period after stop signal (ISO 8601) | Server default `PT1H` |
 | `--result-strategy UPLOAD\|NONE` | How to handle task output artifacts | — |
