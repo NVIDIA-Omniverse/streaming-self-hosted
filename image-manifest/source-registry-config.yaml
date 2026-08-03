@@ -8,6 +8,9 @@
 # source_registry: NGC OCI registry where this plugin's container images are sourced from.
 #   Used by ecr_scanner and skopeo mirror operations.
 #
+# component_source_registries: optional map of manifest component/chart name -> registry
+#   prefix overriding source_registry for that item only (within the plugin's group).
+#
 # helm_repo_url: if present, helm charts for this group are pulled via HTTP from this Helm
 #   repo (https://helm.ngc.nvidia.com/...) instead of OCI. Chart names on HTTP repos drop
 #   the "helm-" prefix used in manifest.yaml keys.
@@ -29,31 +32,6 @@ upstream_plugins:
   container_cache:
     gitlab_project_path: "ncp/nvcf/application-services/nvcf-cache/nvcf-container-cache"
     source_registry: "nvcr.io/nvidia/nvcf"
-
-  # NVCF Cassandra bits
-  nvcf_cassandra:
-    gitlab_project_path: ""
-    source_registry: "nvcr.io/0833294136851237/selfhosted-ga"
-
-  # NVCF alpine-k8s
-  alpine_k8s:
-    gitlab_project_path: ""
-    source_registry: "nvcr.io/0833294136851237/selfhosted-ga"
-
-  # NVCF NATS config reloader
-  nats_server_config_reloader:
-    gitlab_project_path: ""
-    source_registry: "nvcr.io/0833294136851237/selfhosted-ga"
-
-  # NVCF OpenBao
-  nvcf_openbao:
-    gitlab_project_path: ""
-    source_registry: "nvcr.io/0833294136851237/selfhosted-ga"
-
-  # NVCF NIC LLS worker
-  nvcf_worker_niclls:
-    gitlab_project_path: ""
-    source_registry: "nvcr.io/0833294136851237/selfhosted-ga"
 
   # GXCache plugin
   gxcache:

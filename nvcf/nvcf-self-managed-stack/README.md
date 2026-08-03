@@ -2,6 +2,13 @@
 
 # NVCF Infrastructure Deployment
 
+> [!IMPORTANT]
+> Mainline development of the NVCF self-managed stack is moving to the NVCF umbrella monorepo.
+> New feature work and default-branch changes should target `deploy/stacks/self-managed` in `nvcf/nvcf`.
+> This repository remains open for patch and backport work on existing feature and release branches, especially `release/0.6`.
+>
+> Public mirror: https://github.com/NVIDIA/nvcf/tree/main/deploy/stacks/self-managed
+
 Deploy the NVIDIA Cloud Functions (NVCF) self-managed infrastructure using Helmfile for Kubernetes.
 
 ## 🚀 Quick Start (Local Development)
@@ -78,25 +85,27 @@ This Helmfile deploys a complete NVCF infrastructure stack including:
 
 ### Core Infrastructure
 
-- **NATS** (v0.7.1) - Message streaming and communication
-- **Cassandra** (v0.14.5) - Data persistence layer
-- **OpenBao** (v0.30.4) - Secrets management and vault
+- **NATS** - Message streaming and communication
+- **Cassandra** - Data persistence layer
+- **OpenBao** - Secrets management and vault
 
 ### NVCF Services
 
-- **API Gateway** (v1.18.1) - Main NVCF API endpoint
-- **API Keys Service** (v1.4.0) - Authentication and key management
-- **SIS** (v1.14.4) - System Information Service
-- **Invocation Service** (v1.5.2) - Function execution management
-- **ESS API** (v1.5.2) - Event Streaming Service
-- **Notary Service** (v1.3.1) - Digital signing and verification
-- **GRPC Proxy** (v1.6.2) - GRPC proxy service
+- **API Gateway** - Main NVCF API endpoint
+- **API Keys Service** - Authentication and key management
+- **SIS** - System Information Service
+- **Invocation Service** - Function execution management
+- **ESS API** - Event Streaming Service
+- **Notary Service** - Digital signing and verification
+- **GRPC Proxy** - GRPC proxy service
 
 ### Optional Components
 
 - **State Metrics Service** (v1.0.1) - Prometheus metrics for NVCF state (disabled by default)
-- **NVCA Operator** (v1.12.3) - NVIDIA Container Analytics worker component, enabled only in `local` by default
+- **NVCA Operator** (v1.14.0) - NVIDIA Container Analytics worker component, enabled only in `local` by default
 - **Image Pull Secret Setup** - Automated registry authentication
+
+For pinned chart versions, see `helmfile.d/01-dependencies.yaml.gotmpl` (infrastructure) and `helmfile.d/02-core.yaml.gotmpl` (NVCF services).
 
 ## 📋 Prerequisites
 
@@ -137,19 +146,17 @@ helm plugin install https://github.com/databus23/helm-diff
 ```bash
 cd /path/to/nvcf-infrastructure/deploy
 
-# Copy secret templates to create your secret files
+# Copy the secret template to create your environment secret file
 cp secrets/secrets.yaml.template secrets/local-secrets.yaml
-cp secrets/secrets.yaml.template secrets/default-secrets.yaml
 ```
 
 ### 2. Configure Secrets
 
-Edit your environment-specific secret files:
+Edit your environment-specific secret file:
 
 ```bash
 # Required: Fill in actual values
 vim secrets/local-secrets.yaml
-vim secrets/default-secrets.yaml  # For minimal deployments
 ```
 
 ### 3. Verify Configuration
@@ -170,7 +177,7 @@ ls out/
 2. `environments/<env>.yaml` - Environment-specific overrides
 3. `secrets/<env>-secrets.yaml` - Environment secrets (gitignored)
 4. `global.yaml.gotmpl` - Templated global values (applies global settings to all services)
-5. Inline values in `helmfile.yaml.gotmpl`
+5. Inline values in `helmfile.d/*.yaml.gotmpl`
 
 ### Configuration Architecture
 
@@ -193,9 +200,13 @@ NVCT API, NATS, ESS, invocation, gRPC proxy, and worker observability pattern.
 ### Key Configuration Files
 
 ```text
-deploy/
+./
 ├── global.yaml.gotmpl        # Applies global settings to all services
-├── helmfile.yaml.gotmpl      # Main helmfile definition with environment loading
+├── helmfile.d/
+│   ├── 000-prepare.yaml.gotmpl      # Validation hooks (dev only)
+│   ├── 01-dependencies.yaml.gotmpl  # NATS, Cassandra, OpenBao
+│   ├── 02-core.yaml.gotmpl          # NVCF services
+│   └── 03-observability.yaml.gotmpl # Observability stack (optional)
 ├── environments/
 │   ├── base.yaml             # Global defaults and configuration structure
 │   ├── local.yaml            # Local development overrides
@@ -203,9 +214,8 @@ deploy/
 │   ├── eks-cds-qa.yaml       # AWS EKS (CDS qa)
 │   └── volcano-dev-2.yaml    # VolcanoEngine development environment
 └── secrets/
-    ├── *.yaml.template       # Secret templates (tracked)
-    ├── *-secrets.yaml        # Actual secrets (gitignored)
-    └── volcano-dev-2-secrets.yaml  # VolcanoEngine secrets (example)
+    ├── secrets.yaml.template # Secret template (tracked)
+    └── *-secrets.yaml        # Actual secrets (gitignored)
 ```
 
 ### Observability: Tracing
@@ -290,7 +300,6 @@ make apply-docker HELMFILE_ENV=local
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `HELMFILE_ENV` | `default` | Target environment |
-| `HELMFILE_PATH` | `helmfile.yaml.gotmpl` | Helmfile configuration |
 | `OUTPUT_DIR` | `./out` | Manifest output directory |
 
 ### Dockerized Execution
@@ -314,13 +323,11 @@ make apply-docker KUBECONFIG_PATH=/path/to/kubeconfig HELMFILE_ENV=local
 Initialize secret files from templates and configure them:
 
 ```bash
-# Copy templates to create secret files
+# Copy the template to create your environment secret file
 cp secrets/secrets.yaml.template secrets/local-secrets.yaml
-cp secrets/secrets.yaml.template secrets/default-secrets.yaml
 
-# Edit the files to add your actual secret values
+# Edit the file to add your actual secret values
 vim secrets/local-secrets.yaml
-vim secrets/default-secrets.yaml
 ```
 
 **Important**: Secret files (`*-secrets.yaml`) are automatically ignored by git to keep your secrets secure.
@@ -472,32 +479,25 @@ global:
 
 ### Adding New Environments
 
-1. **Create environment entry in `helmfile.yaml.gotmpl`:**
-
-   ```yaml
-   environments:
-     staging:
-       values:
-         - environments/base.yaml      # Always inherit global defaults
-         - environments/staging.yaml   # Environment-specific overrides
-   ```
-
-2. **Create environment configuration:**
+1. **Create an environment values file:**
 
    ```bash
    # Create environment-specific overrides
    cat > environments/staging.yaml << EOF
    global:
      nodeSelectors:
-       enabled: true  # Override global default
+       enabled: true
      storageClass: fast-ssd
      storageSize: 50Gi
      image:
        registry: staging-registry.company.com
        repository: nvcf-staging
    EOF
+   ```
 
-   # Create secrets file
+2. **Create a secrets file for the environment:**
+
+   ```bash
    cp secrets/secrets.yaml.template secrets/staging-secrets.yaml
    vim secrets/staging-secrets.yaml
    ```
@@ -587,15 +587,16 @@ kubectl get events --sort-by='.lastTimestamp' -A
 ### Project Structure
 
 ```text
-deploy/
-├── charts/                    # Local helm charts
-│   └── common-imagepull-setup/
+./
+├── helmfile.d/                # Helmfile split configuration
+│   ├── 000-prepare.yaml.gotmpl
+│   ├── 01-dependencies.yaml.gotmpl
+│   ├── 02-core.yaml.gotmpl
+│   └── 03-observability.yaml.gotmpl
 ├── environments/              # Environment configs
 ├── secrets/                   # Secret files (gitignored)
 ├── scripts/                   # Utility scripts
-├── helmfile.yaml.gotmpl      # Main configuration
 ├── global.yaml.gotmpl        # Global value templates
-├── defaults.yaml             # Default values
 └── Makefile                  # Build automation
 ```
 
@@ -603,7 +604,7 @@ deploy/
 
 ```bash
 # 1. Make changes to helmfile or values
-vim helmfile.yaml.gotmpl
+vim helmfile.d/02-core.yaml.gotmpl
 
 # 2. Test changes locally
 make template HELMFILE_ENV=local
@@ -620,7 +621,7 @@ kubectl get pods -A
 
 ### Adding New Services
 
-1. **Add release to `helmfile.yaml.gotmpl`:**
+1. **Add release to the appropriate `helmfile.d/*.yaml.gotmpl`:**
 
    ```yaml
    - name: new-service
@@ -763,6 +764,7 @@ kubectl port-forward svc/nvcf-api-service 8080:80 -n nvcf
 
 ## 📚 Post-Deployment Setup
 
+After successful deployment, see [Function Creation](https://docs.nvidia.com/nvcf/dev/function-creation) for function deployment and invocation.
 
 ---
 

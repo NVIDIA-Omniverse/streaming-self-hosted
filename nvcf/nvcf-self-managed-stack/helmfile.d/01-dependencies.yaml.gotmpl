@@ -10,9 +10,6 @@ repositories:
   - name: nvcf
     url: {{ .Values.global.helm.sources.registry }}/{{ .Values.global.helm.sources.repository }}
     oci: true
-  - name: nvcf-cassandra
-    url: nvcr.io/0833294136851237/selfhosted-ga
-    oci: true
 
 helmDefaults:
   createNamespace: true
@@ -50,7 +47,7 @@ releases:
     <<: *dependency
 
   - name: openbao-server # this name MUST not change
-    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-openbao-server" "0.30.23" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-openbao-server" "0.30.25" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
     condition: openbao.enabled # From defaults.yaml or env overrides
     namespace: vault-system
     <<: *dependency # Inherits base values from the dependency template
@@ -58,8 +55,7 @@ releases:
       - nats-system/nats
 
   - name: cassandra
-    chart: nvcf-cassandra/helm-nvcf-cassandra
-    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-cassandra" "0.15.5" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-cassandra" "0.18.0" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
     condition: cassandra.enabled # From defaults.yaml or env overrides
     namespace: cassandra-system
     <<: *dependency # Inherits base values from the dependency template

@@ -25,7 +25,7 @@ make register-cluster \
 # 2. Deploy the compute plane
 make install \
   CLUSTER_NAME=gpu-east \
-  HELMFILE_ENV=local
+  HELMFILE_ENV=<env>
 ```
 
 Repeat steps 1-2 for each GPU cluster (see [this example](#multi-cluster-example)).
@@ -34,6 +34,23 @@ that cluster so multiple clusters can be managed from a single checkout.
 `register-cluster` writes `registration/<cluster>-register-values.yaml`.
 `install`, `apply`, and `template` copy that file into `out/` before running
 Helmfile.
+
+`HELMFILE_ENV` maps to `environments/<env>.yaml`. Source checkouts include a
+`local` environment for development. Release archives ship `base.yaml`; create
+an environment file for your registry and service endpoints, then pass its name
+without the `.yaml` suffix.
+
+## Chart and Image Sources
+
+The stack pins the NVCA operator chart in
+`helmfile.d/02-nvca.yaml.gotmpl`. The chart supplies the default NVCA,
+NVCA operator, image credential helper, and shared storage image tags.
+
+Use `global.helm.sources` for chart repository location and `global.image` for
+container image repository location. The stack rewrites repositories through
+those global values, while chart defaults supply the tested image tags.
+Only set `global.nvcaOperator.selfManaged.imageCredHelper.imageTag` when
+pinning a tested replacement helper image.
 
 ## Helmfile Version Note
 
@@ -78,11 +95,11 @@ make register-cluster \
 
 make install \
   CLUSTER_NAME=gpu-east \
-  HELMFILE_ENV=local \
+  HELMFILE_ENV=<env> \
   KUBECONFIG_FILE=~/.kube/gpu-east.yaml
 
 make install \
   CLUSTER_NAME=gpu-west \
-  HELMFILE_ENV=local \
+  HELMFILE_ENV=<env> \
   KUBECONFIG_FILE=~/.kube/gpu-west.yaml
 ```

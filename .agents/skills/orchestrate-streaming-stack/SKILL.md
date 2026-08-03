@@ -44,7 +44,7 @@ Collect or discover this context before sequencing work:
 | Account/subscription | `aws sts get-caller-identity` for AWS; `az account show` for Azure. |
 | Artifact mode | Plan, Generate, Deploy, or Recover. |
 | Storage target | Azure Blob, S3, existing object store, or filesystem adapter. |
-| Cache target | DDCS, UCC, GXCache, or none. Prefer DDCS for shader cache when the workload needs Kit/write-render-worker shader caching. |
+| Cache target | DDCS, UCC, GXCache, NVCF container/proxy cache, or none. Prefer DDCS for shader cache when the workload needs Kit/write-render-worker shader caching. Treat NVCF container/proxy cache as required for ARB/validation unless the user explicitly declines registry/S3 proxy caching. |
 | NVCF stack path | User-provided extracted `nvcf-self-managed-stack` path, or repo-local sample path when the task is only planning. |
 
 Use `streaming-env.sh` at the repo root as the shared env file. If it is missing and work is not read-only planning, copy `streaming-env.sh.example` to `streaming-env.sh`, set mode 600, and populate only the values needed for the selected path.
@@ -64,6 +64,7 @@ Read the child skill before performing that phase. Open only the provider or com
 | GXCache | `caches/.agents/skills/nvcf-gxcache/SKILL.md` with `providers/kubernetes.md` | same | Use when specifically requested or required by the target stack. |
 | DDCS | `caches/.agents/skills/caches-ddcs-deploy/SKILL.md` | same, adapt provider assumptions | Use for Kit/write-render-worker shader cache. GKE examples in the skill are not AWS/Azure defaults. |
 | OV Content Cache | `caches/.agents/skills/caches-ovcontentcache-deploy/SKILL.md` | same | Use when OV Content Cache is part of the requested cache layer. |
+| NVCF container cache | `nvcf/container-cache/README.md` | same | Required for ARB/validation unless user explicitly declines. Install into the `container-caching` namespace. Configures registry and proxy caching backed by the CSP-native registry (ECR on AWS, ACR on Azure), DaemonSet node runtime config, and PVCs. |
 | Storage APIs | `storage/.agents/skills/ovstorage/SKILL.md`, then its `GUIDE.md` | same | Choose Azure/S3 production adapter or example adapter from the storage skill's decision tree. |
 
 ## End-to-End Sequence
@@ -72,7 +73,10 @@ Read the child skill before performing that phase. Open only the provider or com
 
 1. Confirm mode, CSP, account/subscription, region, cluster name, and whether commands will execute.
 2. Verify local tools for the selected path:
-   - Common: `kubectl`, `helm`, `jq`, `curl`, `python3`.
+   - Common: `kubectl`, `helm` (**Helm 3.x, `>=3.12` and `<4` — Helm 4 is
+     unsupported**), `jq`, `curl`, `python3`. Confirm with `helm version`; if the
+     distro default is Helm 4 (e.g. snap `helm` on current Linux), install Helm
+     3.18.x and put it ahead of v4 in `PATH` before continuing.
    - NVCF: `helmfile` 1.1.x and `helm-diff`.
    - Azure: `az`, and `terraform` only if generating Terraform artifacts.
    - AWS: `aws`, `terraform`.
@@ -80,7 +84,9 @@ Read the child skill before performing that phase. Open only the provider or com
 3. Check `NGC_API_KEY_FILE` exists and is non-empty without printing its contents.
 4. Inspect `image-manifest/manifest.yaml` for chart/image versions before pinning versions manually.
 
-Gate: toolchain exists, identity matches target, `streaming-env.sh` has required non-secret values, and no secrets were exposed.
+Gate: toolchain exists (including `helm` reporting a 3.x version `>=3.12` and
+`<4`), identity matches target, `streaming-env.sh` has required non-secret
+values, and no secrets were exposed.
 
 ### Phase 1 - Base CSP Infrastructure
 
@@ -107,7 +113,7 @@ Mirror images and charts only after base infra creates the target registry.
 
 > **OCI vs non-OCI charts.** The manifest has a mix of OCI and non-OCI artifacts. Container images (`nvcr.io/...`) are already OCI and mirror as-is. Some Helm charts are published to an `https://` Helm repository (for example `helm.ngc.nvidia.com`). Those are not OCI and cannot be resolved by `global.helm.sources` (OCI) or mirrored directly. Before pointing the stack at your mirror, convert each `https://` chart to OCI: `helm repo add` / `helm pull` the `.tgz`, then `helm push <chart>.tgz oci://<your-registry>/<mirror-sub-path>`. Only OCI charts can live under `global.helm.sources`.
 
-Gate: target registry contains required images/charts for NVCF, LLS, caches, and storage components selected for the deployment.
+Gate: target registry contains required images/charts for NVCF, LLS, caches, and storage components selected for the deployment. Verify `helm-nvcf-container-cache`, `nvcf-container-cache`, and `nvcf-proxy-tls-certs` are mirrored when container/proxy cache is in scope.
 
 ### Phase 3 - NVCF Prerequisites and Control Plane
 
@@ -138,8 +144,9 @@ Install only the services required by the target workload:
 2. GXCache only when the stack or workload requires it.
 3. DDCS for shader cache when Kit/write-render-worker startup shader compilation needs acceleration. Install with `--set monitoring.enabled=false` when Prometheus CRDs (e.g. `PodMonitoring`) are not present on the cluster.
 4. UCC when object/content cache is in scope.
+5. **NVCF container/proxy cache** — required for ARB/validation unless the user explicitly declines. Read `nvcf/container-cache/README.md`, install `nvcf-container-cache` into the `container-caching` namespace, configure images from the CSP-native registry (ECR on AWS, ACR on Azure), and validate the nvcf-container-cache StatefulSet, nvcf-proxy-cache, DaemonSet node runtime config, and PVCs.
 
-Gate: service rollouts complete, provider LoadBalancers or Services have addresses, UDP 5004 is reachable for LLS, and cache health/proof-of-life checks pass.
+Gate: service rollouts complete, provider LoadBalancers or Services have addresses, UDP 5004 is reachable for LLS, cache health/proof-of-life checks pass, and when container cache is installed: `helm list -n container-caching` shows deployed releases, nvcf-container-cache StatefulSet and nvcf-container-cache-cc DaemonSet are Ready, all PVCs are Bound, and node runtime config is applied.
 
 ### Phase 5 - Storage API
 
@@ -162,6 +169,7 @@ Run a concise acceptance pass:
 - NVCF API health and auth path are reachable.
 - LLS/media path is validated when streaming is in scope.
 - Cache proof-of-life passes for selected cache services.
+- When container/proxy cache is in scope: `helm list -n container-caching` shows deployed, nvcf-container-cache StatefulSet and nvcf-container-cache-cc DaemonSet are Ready, all PVCs are Bound, and node runtime config is applied on GPU nodes.
 - Storage API CRUD and Discovery checks pass.
 - Generated artifacts and env files are listed with paths.
 

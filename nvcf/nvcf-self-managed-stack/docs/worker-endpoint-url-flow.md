@@ -61,7 +61,8 @@ These are the worker-facing endpoint values this stack can configure today.
 | Stack value | Owning service mapping | Worker-visible endpoint |
 | --- | --- | --- |
 | `global.workerEndpoints.nvcfServiceURL` | `api.env.NVCF_FQDN` -> `nvcf.fqdn` | `NVCF_FQDN` |
-| `global.workerEndpoints.nvcfGrpcServiceURL` | `api.env.NVCF_GLOBAL_FQDN_GRPC` -> `nvcf.global-fqdn-grpc`; `grpcproxy.env.NVCF_FQDN_GRPC` | `NVCF_FQDN_GRPC`; gRPC proxy upstream API target |
+| `global.workerEndpoints.nvcfGrpcServiceURL` | `api.env.NVCF_GLOBAL_FQDN_GRPC` -> `nvcf.global-fqdn-grpc` | `NVCF_FQDN_GRPC` |
+| `grpcproxy.nvcfGrpcServiceURL` | `grpcproxy.env.NVCF_FQDN_GRPC`; defaults to `global.workerEndpoints.nvcfGrpcServiceURL` | gRPC proxy upstream API target |
 | `global.workerEndpoints.nvcfNatsServiceURL` | `api.env.NVCF_NATS_WORKER_URL` -> `nvcf.nats.worker-url`; `grpcproxy.env.NATS_FQDN` | `NVCF_FQDN_NATS`; gRPC proxy NATS target |
 | `global.workerEndpoints.essServiceURL` | `api.env.NVCF_ESS_BASE_URL` -> `nvcf.ess.base-url`; `api.env.NVCF_ESS_WORKER_BASE_URL` compatibility alias; `nvctApi.env.NVCT_ESS_BASE_URL` -> `nvct.ess.base-url` | `ESS_FQDN` for NVCF workers; NVCT ESS dependency |
 | `global.workerEndpoints.nvctServiceURL` | `nvctApi.env.NVCT_FQDN` -> `nvct.fqdn` | `NVCT_FQDN` for NVCT task workers |
@@ -93,6 +94,11 @@ For a split control-plane / compute-plane deployment, use endpoints that the
 compute cluster can actually route to, such as a Gateway or load balancer URL,
 instead of a control-plane-only Kubernetes service DNS name.
 
+The gRPC proxy runs in the control-plane cluster. When the worker-facing NVCF
+API gRPC endpoint traverses an authenticated external Gateway, set
+`grpcproxy.nvcfGrpcServiceURL` to the control-plane-local API gRPC service so
+proxy health checks and API calls do not leave and re-enter the cluster.
+
 ## NVCF API Flow
 
 NVCF API worker endpoints should follow the same contract as ESS:
@@ -117,6 +123,15 @@ client-facing `ingress.gatewayApi.routes.grpc` route is for the gRPC proxy
 invocation path, not the NVCF API gRPC service on port 9090. In split-cluster
 installs, provision the API gRPC endpoint with an appropriate Gateway or load
 balancer and set `global.workerEndpoints.nvcfGrpcServiceURL` to that address.
+
+Enable the API GRPCRoutes with
+`ingress.gatewayApi.routes.nvcfApi.grpc.enabled` and
+`ingress.gatewayApi.routes.nvctApi.grpc.enabled`. When an API exposes REST and
+gRPC through the same Gateway listener, configure distinct gRPC hostnames with
+the corresponding `grpc.hostnames` lists. If the hostname lists are empty, the
+stack defaults to `api-grpc.<global.domain>` for NVCF API and
+`tasks-grpc.<global.domain>` for NVCT API. Reusing the REST hostname creates an
+HTTPRoute and GRPCRoute conflict for the same listener and hostname.
 
 ```mermaid
 sequenceDiagram
@@ -182,6 +197,11 @@ The gRPC proxy has two worker-relevant endpoints:
 
 `NATS_FQDN` is configured from `global.workerEndpoints.nvcfNatsServiceURL` so
 the proxy and NVCF API agree on the NATS endpoint used for worker coordination.
+
+`grpcproxy.nvcfGrpcServiceURL` controls the proxy's NVCF API target. It defaults
+to `global.workerEndpoints.nvcfGrpcServiceURL` for backward compatibility. In a
+split-cluster deployment, set it to the control-plane-local API gRPC service
+when remote workers use an authenticated external Gateway endpoint.
 
 For split or multi-cluster installs, `ingress.gatewayApi.routes.grpcWorker`
 can also render the optional gRPC worker callback `TCPRoute`. Keep this route
