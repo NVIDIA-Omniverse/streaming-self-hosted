@@ -22,6 +22,9 @@ upstream_plugins:
   nvcf_self_managed_stack:
     gitlab_project_path: "ncp/nvcf/nvcf-self-managed-stack"
     source_registry: "nvcr.io/nvidia/nvcf"
+    component_source_registries:
+      helm-nvcf-llm-api-gateway: "nvcr.io/0833294136851237/selfhosted-ga"
+      helm-nvcf-llm-request-router: "nvcr.io/0833294136851237/selfhosted-ga"
 
   # NVCF compute-plane stack (NVCA operator)
   nvcf_compute_plane_stack:
