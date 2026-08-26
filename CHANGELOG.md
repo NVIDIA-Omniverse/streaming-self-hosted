@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 26.08.0 — 2026-08-08
+
+Omniverse Streaming on NVCF 26.08.0 is a patch release that updates the Low Latency Streaming (LLS) streaming proxy container to 3.0.4. The Reference Architecture remains on NVCF v0.6.1.
+
+### Updated
+
+- `streaming-proxy`: `3.0.2` → `3.0.4`
+
+---
+
 ## 26.07.1 — 2026-07-29
 
 ### Updated
