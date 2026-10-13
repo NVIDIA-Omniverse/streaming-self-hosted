@@ -42,7 +42,7 @@ orgs; do not paste the key into prompts, scripts, or chat.
 Install or verify the tools used by the skills:
 
 - Common: `kubectl`, `helm`, `jq`, `curl`, `python3`
-- NVCF: [`nvcf-cli`](https://docs.nvidia.com/nvcf/v0.6.0-rc/cli#download-from-ngc), `helmfile` 1.1.x and the `helm-diff` plugin
+- NVCF: [`nvcf-cli`](https://docs.nvidia.com/nvcf/1.0.3/overview/cli), `helmfile` 1.1.x and the `helm-diff` plugin
 - NGC: [`ngc` CLI](https://docs.ngc.nvidia.com/cli/index.html)
 - Azure: `az`
 - AWS: `aws`, `terraform`
