@@ -1,0 +1,54 @@
+# Omniverse Derived Cache (OVDC), ovderivedcache chart 6.0.1.
+# Use chart-owned CPU/RAM presets; Kubernetes memory requests include headroom.
+# Keep this values layer on every helm upgrade, or merge it into canonical values.
+# Release/service name: ovdc; namespace default: ovdc.
+# Inherit the chart's plaintext gRPC, JWT-off and shared-write-buffer defaults.
+# Disable unconfigured OTLP exporters; Prometheus exposition keeps its default.
+fullnameOverride: ovdc
+selfAntiAffinity: false
+nodeSelector:
+  cloud.google.com/gke-gpu: 'true'
+tolerations:
+- key: nvidia.com/gpu
+  operator: Exists
+  effect: NoSchedule
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchExpressions:
+        - key: app.kubernetes.io/name
+          operator: In
+          values:
+          - ovderivedcache
+      topologyKey: kubernetes.io/hostname
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        namespaceSelector: {}
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - ovcc
+            - usd-content-cache
+        topologyKey: kubernetes.io/hostname
+resources:
+  requests:
+    memory: 32Gi
+storage:
+  volume:
+    size: 2048Gi
+settings:
+  store:
+    maxSize: 512G
+  otelTraces:
+    exporter: none
+  otelLogs:
+    exporter: none
+  otelMetrics:
+    exporter: none
+presets:
+  cpu: 8
+  ram: 24GB

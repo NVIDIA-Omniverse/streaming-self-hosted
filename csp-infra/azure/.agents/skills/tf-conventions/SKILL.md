@@ -33,7 +33,32 @@ module "aks" {
 
 **Why:** the module is pre-1.0. A `~>` constraint would auto-pull potentially breaking changes between minor versions. Treat upgrades as code review.
 
-This applies to **the AVM AKS module only.** Provider versions (`azurerm`, `azapi`) follow generic guidance and use `~>`.
+The exact-pin policy above applies to **the AVM AKS module only.** Provider and Terraform-core versions, by contrast, have **hard floors mandated by AVM 0.5.4** — they are not free to float to generic Azure guidance (which is historically `azurerm ~> 3.x` and would fail `terraform init` against AVM 0.5.4). Every stage's `providers.tf` MUST pin **`azurerm`**; only the **aks-cluster** stage additionally needs **`azapi`** (the AVM AKS module drives the cluster through `azapi_*` resources). Do not add `azapi` to stages that don't use it (acr, aks-nodes, blob-storage, iam-vpc) — an unused required provider just makes `terraform init` download it for nothing.
+
+aks-cluster stage (`azurerm` + `azapi`):
+
+```hcl
+terraform {
+  required_version = ">= 1.11"
+  required_providers {
+    azurerm = { source = "hashicorp/azurerm", version = ">= 4.46.0, < 5.0.0" }
+    azapi   = { source = "Azure/azapi", version = "~> 2.4" }   # AVM drives the cluster via azapi
+  }
+}
+```
+
+Every other stage (`azurerm` only; add `hashicorp/time ~> 0.11` where `time_sleep` is used, e.g. iam-vpc):
+
+```hcl
+terraform {
+  required_version = ">= 1.11"
+  required_providers {
+    azurerm = { source = "hashicorp/azurerm", version = ">= 4.46.0, < 5.0.0" }
+  }
+}
+```
+
+Keep the whole bootstrap on one azurerm 4.x line so stages compose.
 
 ## Override 2 — HCL symbolic names vs Azure resource names
 
@@ -60,13 +85,14 @@ Naming pattern: `<resource>-<workload>-<env>-<region>` (e.g., `aks-nvcf-validati
 Use the AVM resource module pinned `= 0.5.4` for the cluster. Additional `azurerm_kubernetes_cluster_node_pool` resources are fine and expected (needed for explicit zone control on the GPU pool).
 
 ### R2. AVM must-haves
+These use the **AVM 0.5.4 input interface**, NOT the `azurerm_kubernetes_cluster` resource schema (the resource-style names — `identity`, `oidc_issuer_enabled`, `local_account_disabled`, `default_node_pool` — do not exist on the module; that mismatch was bug 6311796):
 - `enable_telemetry = false` (AVM defaults to true)
-- `aad_profile = { managed = true, azure_rbac_enabled = true, admin_group_object_ids = [...] }`
-- `local_account_disabled = true` — no static admin kubeconfig
-- `oidc_issuer_enabled = true` and `workload_identity_enabled = true`
-- `api_server_access_profile` with VNet integration + corp-egress allowlist (see R3)
-- Pass `principal_id` of `module.aks.kubelet_identity.object_id` to an `azurerm_role_assignment` for `AcrPull` on the ACR; keep ACR in its own module
-- Default node pool: `Standard_D8ds_v5` minimum (the AVM default `D4d_v5` is too small once NVCF stack + caches land)
+- `aad_profile = { managed = true, enable_azure_rbac = true, admin_group_object_ids = [...] }` (group ids only)
+- `disable_local_accounts = true` — no static admin kubeconfig
+- `oidc_issuer_profile = { enabled = true }` and `security_profile = { workload_identity = { enabled = true } }`
+- `api_server_access_profile` with VNet integration + optional corp-egress allowlist (see R3)
+- Pass `principal_id` of `module.aks.kubelet_identity.objectId` (azapi raw output — camelCase) to an `azurerm_role_assignment` for `AcrPull` on the ACR; keep ACR in its own module
+- `default_agent_pool` (NOT `default_node_pool`): `Standard_D8ds_v5` minimum (the AVM default `D4d_v5` is too small once NVCF stack + caches land)
 
 ### R3. API server access — VNet integration + corp-egress allowlist (not laptop-IP)
 
@@ -110,10 +136,10 @@ The cluster module creates the AKS cluster only. Do not create `kubernetes_stora
 **Why:** mixing both into one state file creates destructive ordering bugs and a hard kubeconfig dependency for `terraform plan`.
 
 ### R7. AAD + Azure RBAC for Kubernetes
-`azure_rbac_enabled = true`. Grant cluster admin via `azurerm_role_assignment` to "Azure Kubernetes Service RBAC Cluster Admin" on the cluster scope. Do not create in-cluster ConfigMaps for admin mapping.
+`aad_profile.enable_azure_rbac = true` + `disable_local_accounts = true`. Because local accounts are disabled, an admin can use `kubectl` ONLY through Azure RBAC role assignments — so grant **each** id in `ADMIN_AAD_OBJECT_IDS` (user OR group) **both** roles on the cluster scope via `azurerm_role_assignment`: "Azure Kubernetes Service Cluster User Role" (to pull a kubeconfig via `az aks get-credentials`) **and** "Azure Kubernetes Service RBAC Cluster Admin" (in-cluster cluster-admin). Granting only the AAD admin group, or omitting these, leaves the operator `Forbidden` on every kubectl call (bug 6325098). Do not create in-cluster ConfigMaps for admin mapping.
 
 ### R8. Workload Identity, not pod-level secrets
-`oidc_issuer_enabled = true` and `workload_identity_enabled = true`. Map workload SAs to user-assigned identities via `azurerm_federated_identity_credential`. No connection strings or account keys in K8s Secrets when Workload Identity can do the same thing.
+`oidc_issuer_profile = { enabled = true }` and `security_profile = { workload_identity = { enabled = true } }`. Map workload SAs to user-assigned identities via `azurerm_federated_identity_credential`. No connection strings or account keys in K8s Secrets when Workload Identity can do the same thing.
 
 ### R9. No `null_resource` + `local-exec`
 No waiters, no pollers, no shelling out for image pulls or CIDR overlap checks. Trust the resource graph; use `time_sleep` only when a real eventual-consistency window exists. Image mirroring is operational, not a TF resource.

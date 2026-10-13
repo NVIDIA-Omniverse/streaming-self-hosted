@@ -1,0 +1,10 @@
+# Omniverse Derived Cache (OVDC), ovderivedcache chart 6.0.1.
+# Use chart-owned CPU/RAM presets; Kubernetes memory requests include headroom.
+# Keep this values layer on every helm upgrade, or merge it into canonical values.
+# Layer after the platform file. Presets size caches, not pod resources.
+resources:
+  requests:
+    memory: 32Gi
+presets:
+  cpu: 8
+  ram: 24GB

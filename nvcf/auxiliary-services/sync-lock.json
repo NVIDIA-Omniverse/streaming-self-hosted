@@ -2,8 +2,8 @@
   "version": 1,
   "services": {
     "nvcf-lls-install": {
-      "ref": "lls/v3.0.0-rc.1",
-      "upstreamSha": "45cd02dde8e6adb91f7c28562fc86a9bf8f886c4"
+      "ref": "lls/v4.0.0-rc.6",
+      "upstreamSha": "342c3b2dbb2304a10ca1bd332226eee45fc30671"
     },
     "nvcf-gxcache": {
       "ref": "gxcache/v0.8.2-rc.5",

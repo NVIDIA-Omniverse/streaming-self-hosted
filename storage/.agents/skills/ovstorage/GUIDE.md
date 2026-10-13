@@ -230,8 +230,8 @@ The Helm chart name and the container image name are **not always the same**. Al
 
 | Service | Helm Chart Name | Chart Version | Container Image | Image Tag |
 |---------|----------------|---------------|-----------------|-----------|
-| Storage (NVIDIA adapter) | `storage-service` | 1.0.2 | `storage-service` | 1.0.2 |
-| Discovery | `discovery-service` | 2.3.8 | `simple-nginx` | 1.0.2 |
+| Storage (NVIDIA adapter) | `storage-service` | 1.2.0 | `storage-service` | 1.2.0 |
+| Discovery | `discovery-service` | 2.3.11 | `simple-nginx` | 1.1.0 |
 | Notifications (Aggregation) | `event-aggregation-service` | 1.5.52 | `event-aggregation-service` | 1.5.52 |
 | Notifications (Consumer) | `event-consumer-service` | 1.9.6 | `event-consumer-service` | 1.9.6 |
 | RabbitMQ | `rabbitmq` | 99.3.0 | `rabbitmq` | 4.1.3-debian-12-r1 |

@@ -1,7 +1,7 @@
 
 # OVCC Troubleshooting
 
-Distilled from operational runbooks. Each pattern is symptom → root cause → fix. Use during conversation when the user describes a problem. The OVCC 4.0.x runtime is identical to UCC 3.0 (`usd-content-cache:3.0.1`), so these patterns carry forward unchanged.
+Distilled from operational runbooks. Each pattern is symptom → root cause → fix. Use during conversation when the user describes a problem. This skill uses chart 4.0.4 with `usd-content-cache:3.0.2`. These patterns originated with UCC; confirm the symptoms and deployed image before applying them.
 
 ## Metadata cache undersizing
 

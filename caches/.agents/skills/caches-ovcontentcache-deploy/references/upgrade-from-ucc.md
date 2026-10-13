@@ -2,8 +2,21 @@
 # Upgrade From UCC 3.0.3 to OVCC
 
 OVCC 4.0.x renames the chart `usd-content-cache` (UCC 3.0.3) to `ovcontentcache`
-and changes the rendered Kubernetes defaults. The container image is unchanged
-(`usd-content-cache:3.0.1`); this is a chart-level rename, not a runtime change.
+and changes the rendered Kubernetes defaults. The container repository remains
+`usd-content-cache`. This skill also selects the `3.0.2` security patch by
+overriding the 4.0.4 chart's default image `3.0.1`.
+
+Keep the image selection in your maintained upgrade values file, along with
+any installation-specific settings that must carry forward:
+
+```yaml
+# ovcc-upgrade-values.yaml
+image:
+  tag: "3.0.2"
+```
+
+Pass this file on every upgrade. Compatibility mode preserves resource names;
+it does not select the patched container image.
 
 ## Greenfield vs upgrade
 
@@ -28,6 +41,7 @@ StatefulSet and fails the upgrade with a message telling you to enable
 helm upgrade <release> "${CACHES_HELM_REPO_NAME}/ovcontentcache" \
   --version 4.0.4 \
   --namespace <namespace> \
+  -f ovcc-upgrade-values.yaml \
   --set compat.useUccDefaults=true \
   --wait --timeout 5m
 ```
@@ -54,6 +68,7 @@ explicitly. Note the values key rename `service.ucc.*` → `service.cache.*`:
 helm upgrade <release> "${CACHES_HELM_REPO_NAME}/ovcontentcache" \
   --version 4.0.4 \
   --namespace <namespace> \
+  -f ovcc-upgrade-values.yaml \
   --set compat.useUccDefaults=true \
   --set tls.secretName=<former tls.secretName> \
   --set service.cache.port=<former service.ucc.port> \

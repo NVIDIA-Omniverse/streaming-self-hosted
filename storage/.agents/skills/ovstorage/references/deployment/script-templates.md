@@ -176,8 +176,8 @@ mkdir -p "${SCRIPT_DIR}/charts"
 cd "${SCRIPT_DIR}/charts"
 
 CHARTS=(
-  "storage-service-1.0.2"
-  "discovery-service-2.3.8"
+  "storage-service-1.2.0"
+  "discovery-service-2.3.11"
   # Add more charts based on selected services:
   # "rabbitmq-99.3.0"
   # "event-aggregation-service-1.4.13"

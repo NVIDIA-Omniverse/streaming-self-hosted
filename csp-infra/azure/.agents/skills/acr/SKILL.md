@@ -109,6 +109,21 @@ echo "Wrote generated/.env.acr"
 ## Terraform snippet (reference)
 
 ```hcl
+terraform {
+  required_version = ">= 1.11"   # one azurerm 4.x line with the rest of the bootstrap
+
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = ">= 4.46.0, < 5.0.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+}
+
 resource "azurerm_container_registry" "main" {
   name                = var.acr_name
   resource_group_name = var.resource_group_name

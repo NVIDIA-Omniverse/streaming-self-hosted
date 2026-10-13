@@ -16,8 +16,8 @@ tools: ["Shell", "Read", "Write"]
 
 Generate Terraform for workload node groups on an existing EKS cluster:
 
-- compute managed node group for CPU-heavy services such as streaming proxy or
-  gateway-side helpers
+- compute managed node group for CPU-heavy services such as streaming proxy,
+  gateway-side helpers, and OVDC
 - GPU managed node group for function workloads
 
 Do not create the EKS control plane here. Do not install GPU Operator here.
@@ -41,6 +41,39 @@ Defaults:
 | GPU node instance type | `g6.12xlarge` or closest quota-approved GPU SKU |
 | GPU AMI type | `AL2023_x86_64_NVIDIA` |
 | GPU min/max/desired | `0` / `2` / `1` |
+
+OVDC capacity inputs:
+
+| Input | Default | Notes |
+|---|---|---|
+| `OVDC_REPLICAS` | `0` | Number of OVDC replicas the compute pool must host. |
+| `OVDC_MEMORY_REQUEST_GIB` | required when `OVDC_REPLICAS > 0` | Rendered pod request rounded up to GiB. |
+| `OVDC_PLATFORM_RESERVE_GIB` | `8` | Allocatable-memory headroom per OVDC node. |
+
+## OVDC Compute Capacity Contract
+
+When `OVDC_REPLICAS > 0`:
+
+1. Require `OVDC_MEMORY_REQUEST_GIB` to be a positive integer.
+2. Set compute minimum and desired capacity to at least `OVDC_REPLICAS`.
+   OVDC uses hard pod anti-affinity, so each replica needs a separate eligible
+   node.
+3. Choose a CPU instance type whose physical memory is greater than
+   `OVDC_MEMORY_REQUEST_GIB + OVDC_PLATFORM_RESERVE_GIB`. Nominal instance RAM
+   is only a planning preflight; kubelet and operating-system reservations make
+   the joined node's allocatable memory authoritative.
+4. Keep `node-type=compute` on the pool. Do not satisfy an undersized compute
+   pool by allowing OVDC onto a GPU node.
+5. Pass the same three inputs to `eks-validate`, which must find at least
+   `OVDC_REPLICAS` Ready, non-GPU compute nodes with enough allocatable memory.
+
+Useful planning examples with the default 8 GiB reserve:
+
+| OVDC request | Minimum planning class |
+|---|---|
+| 16 GiB | 32 GiB physical memory, subject to the allocatable gate |
+| 32 GiB | 64 GiB physical memory |
+| 56 GiB | 128 GiB physical memory; 64 GiB nominal is too close after reservations |
 
 ## Node Group Labels
 
@@ -105,10 +138,19 @@ default and mirrors AWS best practice for EKS + IMDSv2.
 - Add taints only when the workload scheduling contract requires them; if a
   taint is used for GPU nodes, make sure validation and smoke-test pod include
   the matching toleration.
+- When OVDC capacity is requested, reject generation if the selected compute
+  instance's published memory cannot exceed request plus reserve. Still require
+  the post-join allocatable-memory validation; the catalog value cannot prove
+  schedulable capacity.
 
 ## Validation Checklist
 
 - [ ] Compute nodes are labeled `node-type=compute`.
+- [ ] When `OVDC_REPLICAS > 0`, compute min/desired capacity is at least the
+      replica count and the selected CPU instance passes the request-plus-reserve
+      planning check.
+- [ ] OVDC capacity is never satisfied by GPU nodes; live allocatable memory is
+      delegated to the `eks-validate` platform-capacity gate.
 - [ ] GPU nodes are labeled `node-type=gpu`.
 - [ ] GPU nodes include `nvidia.com/gpu.deploy.driver=false`.
 - [ ] GPU node group uses `AL2023_x86_64_NVIDIA` or reviewed equivalent.

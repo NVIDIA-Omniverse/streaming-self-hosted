@@ -138,6 +138,21 @@ echo "Wrote generated/.env.blob-storage"
 ## Terraform snippet (reference)
 
 ```hcl
+terraform {
+  required_version = ">= 1.11"   # one azurerm 4.x line with the rest of the bootstrap
+
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = ">= 4.46.0, < 5.0.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+}
+
 resource "azurerm_storage_account" "main" {
   name                            = var.storage_account_name
   resource_group_name             = var.resource_group_name

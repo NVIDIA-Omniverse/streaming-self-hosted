@@ -15,7 +15,7 @@ Adds 0–2 additional node pools to an existing AKS cluster:
 | Pool | SKU (default) | Zone(s) | Labels | Purpose |
 |---|---|---|---|---|
 | GPU pool | `Standard_NV36ads_A10_v5` | `["1"]` | `nvidia.com/gpu=true` | NVCF function workloads (GPU) |
-| Compute pool *(optional)* | `Standard_D8ds_v5` | `["1"]` | `node-type=compute` | LLS `streaming-proxy` (5 CPU / 24 GiB) |
+| Compute pool *(optional)* | `Standard_D8ds_v5` | `["1"]` | `node-type=compute` | LLS `streaming-proxy` and OVDC |
 
 GPU pool MUST be single-zone if LLS will be deployed — Azure Standard LB zonality must match the GPU pool's zone (see [`nvcf-azure-deploy` architecture rule #9](https://gitlab-master.nvidia.com/omniverse/streaming-skills/-/blob/main/azure/.agents/skills/nvcf-azure-deploy/SKILL.md) — or locally [`tf-conventions`](../tf-conventions/SKILL.md)).
 
@@ -60,6 +60,30 @@ Source from `streaming-env.sh` + `generated/.env.iam-vpc` + `generated/.env.aks-
 | `COMPUTE_ZONES` | Compute zone(s) (single-zone to match LLS LB) | `1` |
 | `COMPUTE_NODE_LABELS` | Pool labels | `node-type=compute` |
 | `OUTPUT_FORMAT` | `bash` or `terraform` | `bash` |
+| `OVDC_REPLICAS` | OVDC replicas the compute pool must host | `0` |
+| `OVDC_MEMORY_REQUEST_GIB` | Rendered OVDC pod request rounded up to GiB; required when replicas are nonzero | _(unset)_ |
+| `OVDC_PLATFORM_RESERVE_GIB` | Allocatable-memory headroom per OVDC node | `8` |
+
+## OVDC compute capacity contract
+
+When `OVDC_REPLICAS > 0`:
+
+1. Require `OVDC_MEMORY_REQUEST_GIB` to be a positive integer and force
+   `ENABLE_COMPUTE_POOL=true`.
+2. Require `COMPUTE_MIN_COUNT >= OVDC_REPLICAS`. OVDC uses hard pod
+   anti-affinity, so every replica needs a distinct eligible node.
+3. Query the selected SKU with `az vm list-sizes` and require its physical
+   memory to be greater than
+   `OVDC_MEMORY_REQUEST_GIB + OVDC_PLATFORM_RESERVE_GIB`. This is a planning
+   preflight only; kubelet and operating-system reservations mean Stage 07's
+   Kubernetes allocatable-memory check is authoritative.
+4. Keep `node-type=compute` on the pool. Do not satisfy an undersized compute
+   pool by placing OVDC on a GPU node.
+
+With the default 8 GiB reserve, a 16 GiB request can start with a 32 GiB class,
+a 32 GiB request needs at least a 64 GiB class, and a 56 GiB request should use
+a 128 GiB class because a nominal 64 GiB node will not retain 64 GiB of
+allocatable memory.
 
 ## Outputs
 
@@ -105,6 +129,21 @@ GPU_ZONES="${GPU_ZONES:-1}"
 GPU_NODE_TAINTS="${GPU_NODE_TAINTS:-}"   # empty = no taint (AWS-parity); label-only GPU-pool reservation
 GPU_DRIVER_INSTALL="${GPU_DRIVER_INSTALL:-enabled}"
 ENABLE_COMPUTE_POOL="${ENABLE_COMPUTE_POOL:-false}"
+OVDC_REPLICAS="${OVDC_REPLICAS:-0}"
+OVDC_PLATFORM_RESERVE_GIB="${OVDC_PLATFORM_RESERVE_GIB:-8}"
+
+if ! [[ "$OVDC_REPLICAS" =~ ^[0-9]+$ ]] || \
+   ! [[ "$OVDC_PLATFORM_RESERVE_GIB" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: OVDC_REPLICAS and OVDC_PLATFORM_RESERVE_GIB must be non-negative integers" >&2
+  exit 1
+fi
+if [[ "$OVDC_REPLICAS" -gt 0 ]]; then
+  if ! [[ "${OVDC_MEMORY_REQUEST_GIB:-}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: OVDC_MEMORY_REQUEST_GIB must be a positive integer when OVDC_REPLICAS>0" >&2
+    exit 1
+  fi
+  ENABLE_COMPUTE_POOL=true
+fi
 
 az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 
@@ -148,6 +187,26 @@ fi
 # Optional compute pool
 if [[ "$ENABLE_COMPUTE_POOL" == "true" ]]; then
   COMPUTE_POOL_NAME="${COMPUTE_POOL_NAME:-compute}"
+  COMPUTE_VM_SIZE="${COMPUTE_VM_SIZE:-Standard_D8ds_v5}"
+  COMPUTE_MIN_COUNT="${COMPUTE_MIN_COUNT:-1}"
+  COMPUTE_MAX_COUNT="${COMPUTE_MAX_COUNT:-1}"
+  if [[ "$OVDC_REPLICAS" -gt 0 ]]; then
+    if [[ "$COMPUTE_MIN_COUNT" -lt "$OVDC_REPLICAS" ]]; then
+      echo "ERROR: COMPUTE_MIN_COUNT=$COMPUTE_MIN_COUNT must be >= OVDC_REPLICAS=$OVDC_REPLICAS" >&2
+      exit 1
+    fi
+    REQUIRED_MEMORY_MIB=$(( (OVDC_MEMORY_REQUEST_GIB + OVDC_PLATFORM_RESERVE_GIB) * 1024 ))
+    SKU_MEMORY_MIB="$(az vm list-sizes --location "$LOCATION" \
+      --query "[?name=='${COMPUTE_VM_SIZE}'].memoryInMb | [0]" -o tsv 2>/dev/null || true)"
+    if ! [[ "$SKU_MEMORY_MIB" =~ ^[0-9]+$ ]]; then
+      echo "ERROR: could not determine memory for compute SKU $COMPUTE_VM_SIZE in $LOCATION" >&2
+      exit 1
+    fi
+    if [[ "$SKU_MEMORY_MIB" -le "$REQUIRED_MEMORY_MIB" ]]; then
+      echo "ERROR: $COMPUTE_VM_SIZE has ${SKU_MEMORY_MIB} MiB; OVDC requires more than ${REQUIRED_MEMORY_MIB} MiB physical memory for request plus reserve" >&2
+      exit 1
+    fi
+  fi
   if az aks nodepool show --cluster-name "$CLUSTER_NAME" --resource-group "$RESOURCE_GROUP" --name "$COMPUTE_POOL_NAME" &>/dev/null; then
     echo "Compute pool $COMPUTE_POOL_NAME already exists; skipping add"
   else
@@ -155,9 +214,9 @@ if [[ "$ENABLE_COMPUTE_POOL" == "true" ]]; then
     az aks nodepool add \
       --cluster-name "$CLUSTER_NAME" --resource-group "$RESOURCE_GROUP" \
       --name "$COMPUTE_POOL_NAME" \
-      --node-vm-size "${COMPUTE_VM_SIZE:-Standard_D8ds_v5}" \
-      --node-count "${COMPUTE_MIN_COUNT:-1}" \
-      --enable-cluster-autoscaler --min-count "${COMPUTE_MIN_COUNT:-1}" --max-count "${COMPUTE_MAX_COUNT:-1}" \
+      --node-vm-size "$COMPUTE_VM_SIZE" \
+      --node-count "$COMPUTE_MIN_COUNT" \
+      --enable-cluster-autoscaler --min-count "$COMPUTE_MIN_COUNT" --max-count "$COMPUTE_MAX_COUNT" \
       --zones "${COMPUTE_ZONES:-1}" \
       --labels "${COMPUTE_NODE_LABELS:-node-type=compute}" \
       --vnet-subnet-id "$NODE_SUBNET_ID" \
@@ -171,6 +230,21 @@ kubectl get nodes -o wide
 ## Terraform snippet (reference)
 
 ```hcl
+terraform {
+  required_version = ">= 1.11"   # one azurerm 4.x line with aks-cluster (AVM 0.5.4)
+
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = ">= 4.46.0, < 5.0.0"   # auto_scaling_enabled below is the 4.x argument name
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+}
+
 resource "azurerm_kubernetes_cluster_node_pool" "gpu" {
   name                  = var.gpu_pool_name
   kubernetes_cluster_id = var.cluster_id
@@ -227,6 +301,11 @@ az aks nodepool delete --cluster-name "$CLUSTER_NAME" --resource-group "$RESOURC
 - [ ] GPU pool has **no taint** by default (label-only reservation, matching the AWS foundation). A taint is opt-in via `GPU_NODE_TAINTS` and must be paired with matching workload tolerations — otherwise NVCF function pods can't schedule (NVCA `capacity: 0`)
 - [ ] `GPU_DRIVER_INSTALL=disabled` path uses `--skip-gpu-driver-install` (and a TF azapi snippet is provided as a comment)
 - [ ] Compute pool is gated by `ENABLE_COMPUTE_POOL=true`
+- [ ] `OVDC_REPLICAS > 0` forces the compute pool on, requires at least one
+      distinct compute node per replica, and rejects a compute SKU whose
+      published memory cannot exceed request plus reserve
+- [ ] OVDC uses only `node-type=compute`; Stage 07 validates live allocatable
+      memory and never counts GPU nodes as OVDC capacity
 - [ ] Both pools attach to `NODE_SUBNET_ID` from `iam-vpc`
 - [ ] Idempotent (check before add)
 - [ ] `--teardown` removes both pools

@@ -250,6 +250,17 @@ natsAuthCalloutService:
 {{- $nvctApiGrpcRouteHostnames := dig "ingress" "gatewayApi" "routes" "nvctApi" "grpc" "hostnames" (list) .Values | default (list (printf "tasks-grpc.%s" .Values.global.domain)) }}
 api:
   fullnameOverride: nvcf-api
+  # The API chart owns worker sidecar defaults independently of the release
+  # manifest. Override NICLLS here so generated workers use the mirrored pin.
+  {{- $manifest := readFile "../../image-manifest/manifest.yaml" | fromYaml }}
+  {{- $nicllsVersion := dig "nvcf-self-managed-stack" "nvcf_worker_niclls" "" $manifest | required "manifest must pin nvcf-self-managed-stack.nvcf_worker_niclls" }}
+  {{- $nicllsRegistry := .Values.global.image.registry | trimSuffix "/" | required "global.image.registry is required for the NICLLS image" }}
+  {{- $nicllsRepository := .Values.global.image.repository | trimAll "/" | required "global.image.repository is required for the NICLLS image" }}
+  remoteConfig:
+    configData:
+      nvcf:
+        sidecars:
+          niclls-container: {{ printf "%s/%s/nvcf_worker_niclls:%s" $nicllsRegistry $nicllsRepository $nicllsVersion | quote }}
   {{- if .Values.global.imagePullSecrets }}
   imagePullSecrets:
     {{- toYaml .Values.global.imagePullSecrets | nindent 4 }}

@@ -1,0 +1,51 @@
+# OVCC chart 4.0.4 / image 3.0.2; S3 backend example with TLS enabled.
+# Requires an existing gp3 class or STORAGE_CLASS override. Check EBS CSI,
+# node disk limits and provisioned IOPS/throughput; capacity is workload-specific.
+# Enable ServiceMonitor only if the cluster has its CRD and a compatible scraper.
+replicaCount: 1
+image:
+  tag: 3.0.2
+persistence:
+  mode: pvc
+  storageClassName: gp3
+  volumes:
+  - name: s3
+    path: /proxy_cache_s3
+    sizeGi: 2048
+    minFreeSizePercentage: 7
+nginx:
+  backends:
+    s3:
+      include: true
+    gcs:
+      include: false
+    azure:
+      include: false
+    nucleus:
+      include: false
+  proxyCache:
+    paths:
+    - name: s3
+      path: /proxy_cache_s3/data
+      maxIdleTime: 1d
+      metadataMemorySize: 1024m
+nodeSelector: {}
+tolerations: []
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchExpressions:
+        - key: app.kubernetes.io/name
+          operator: In
+          values:
+          - ovcc
+      topologyKey: kubernetes.io/hostname
+metrics:
+  prometheus:
+    podMonitoring:
+      enabled: false
+    serviceMonitor:
+      enabled: false
+tls:
+  enabled: true

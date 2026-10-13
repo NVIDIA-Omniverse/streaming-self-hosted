@@ -36,7 +36,7 @@ Terraform must not own:
 - Kubernetes in-cluster objects such as namespaces, services, service accounts,
   RBAC, ConfigMaps, or storage classes
 - Helm releases or Helmfile environments
-- NVCF control plane, NVCA, LLS, caches, UCC, DDCS, storage APIs, functions, or
+- NVCF control plane, NVCA, LLS, caches, UCC, OVDC, storage APIs, functions, or
   stream validation
 - NGC to ECR image copy jobs
 - Secret values or registry auth artifacts

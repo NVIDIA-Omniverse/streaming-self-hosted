@@ -4,27 +4,34 @@ skills:
   nvcf-lls-install:
     chart:
       name: gdn-streaming
-      registry: oci://nvcr.io/0795883928596950/gdn-streaming
+      registry: https://helm.ngc.nvidia.com/nvidia/omniverse/charts/gdn-streaming-3.0.0.tgz
       version: 3.0.0
     images:
       streaming-proxy:
-        source: nvcr.io/0795883928596950/streaming-proxy
-        tag: 3.0.2-rc.1
-        provider_validation_wrapper_tag: 3.0.2-rc.1
+        source: nvcr.io/nvidia/omniverse/streaming-proxy
+        tag: 4.0.2
+        provider_validation_wrapper_tag: 4.0.2
       turn:
-        source: nvcr.io/0795883928596950/turn
-        tag: 3.0.1
+        source: nvcr.io/nvidia/omniverse/turn
+        tag: 4.0.2
+      nvcf-openbao:
+        source: nvcr.io/nvidia/nvcf/nvcf-openbao
+        tag: 2.6.2-nv-1.3.4
     ports:
+      # Internal streaming-proxy listener / Service targetPort. This is not the
+      # advertised client port; see providers/kubernetes.md for resolving it.
       udp_media: 5004
       tcp_turn: 3478
       tcp_turn_tls: 5349
       tcp_turn_health: 8080
+      # Chart media Service nodePort. Advertise it only for direct NodePort
+      # access; LoadBalancer/NAT paths advertise their external listener.
       chart_node_port: 30504
       sibling_lb_node_port: 30505
       health_metrics: 8000
     sync:
-      ref: lls/v3.0.0-rc.1
-      upstream_sha: 45cd02dde8e6adb91f7c28562fc86a9bf8f886c4
+      ref: lls/v4.0.0-rc.6
+      upstream_sha: 342c3b2dbb2304a10ca1bd332226eee45fc30671
 
   nvcf-gxcache:
     chart:

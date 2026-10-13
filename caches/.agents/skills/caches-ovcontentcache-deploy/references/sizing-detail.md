@@ -3,7 +3,7 @@
 
 Long-form sizing data used by the `caches-ovcontentcache-deploy` skill. SKILL.md keeps the queue-depth formula inline; this file contains the decision tree and the empirical tables behind it.
 
-All data was collected on the UCC 3.0 runtime and applies unchanged to OVCC 4.0.x: the OVCC 4.0.x release is a chart rename only and ships the identical container image (`usd-content-cache:3.0.1`), so the data plane and its performance characteristics are the same.
+All data was collected on the UCC 3.0 runtime. This skill now uses chart 4.0.4 with the security-patched `usd-content-cache:3.0.2` image. Use these historical measurements as a sizing starting point and validate them against the deployed image and workload; they are not new benchmarks of 3.0.2.
 
 ## Decision Tree
 

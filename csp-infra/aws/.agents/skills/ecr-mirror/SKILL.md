@@ -1,7 +1,7 @@
 ---
 name: ecr-mirror
 description: Mirror every KAS/NVCF manifest image and optional Helm OCI chart from NGC into AWS ECR using generated regsync config.
-version: "1.1.0"
+version: "1.2.0"
 author: NVIDIA Omniverse Streaming
 tags: ["aws", "ecr", "regsync", "nvcf"]
 tools: ["Shell", "Read", "Write"]
@@ -38,7 +38,9 @@ Optional:
 | Variable | Default | Description |
 |---|---|---|
 | `NGC_API_KEY` | unset | Required only when `DRY_RUN=false`; export in the shell for `regsync` and never print it. |
-| `TARGET_REPOSITORY` | `${CLUSTER_NAME}` | Non-empty ECR repository prefix. |
+| `TARGET_REPOSITORY` | `${CLUSTER_NAME}` | Backward-compatible base ECR repository prefix. Trailing slashes are removed. |
+| `TARGET_IMAGE_REPOSITORY` | `${TARGET_REPOSITORY}` | Repository prefix for container images. Trailing slashes are removed. |
+| `TARGET_CHART_REPOSITORY` | `${TARGET_REPOSITORY}/charts` | Separate repository prefix for Helm charts. Trailing slashes are removed, and the result must differ from `TARGET_IMAGE_REPOSITORY`. |
 | `MANIFEST_PATH` | `${REPO_ROOT}/image-manifest/manifest.yaml` | Manifest source of truth. |
 | `SOURCE_REGISTRY_CONFIG` | beside `MANIFEST_PATH` | Source registry resolver. |
 | `INCLUDE_HELM_CHARTS` | `true` | Include `helm-*` OCI chart artifacts in the regsync config. |
@@ -65,8 +67,13 @@ mapping as the Azure ACR mirror flow:
 | `gxcache` | `gxcache` |
 | `ucc` | `ucc` |
 | `ddcs` | `ddcs` |
+| `ovdc` | `ovdc` |
 | `lls` | `lls` |
 | `storage-api` | `storage_service`, then `storage_api` |
+
+All other manifest group names map to the plugin key obtained by replacing
+hyphens with underscores. This covers groups such as
+`nvcf-observability-stack` without another hand-maintained case entry.
 
 If the config file exists, do not use stale hardcoded defaults. If the config
 file is missing, fall back only to documented environment overrides:
@@ -90,18 +97,25 @@ The generated mirror script must write:
 - `generated/ecr-regsync.yaml`
 - `generated/ecr-repositories.txt`
 - `generated/ecr-inventory.tsv`
+- `generated/ecr-helm-http.tsv`
 
 Each sync entry must use:
 
 ```text
 source: <source_registry>/<image>:<tag>
-target: <aws_account>.dkr.ecr.<region>.amazonaws.com/<TARGET_REPOSITORY>/<image>:<tag>
+target: <aws_account>.dkr.ecr.<region>.amazonaws.com/<TARGET_IMAGE_REPOSITORY>/<image>:<tag>
 ```
 
-The same rule applies to Helm OCI charts, where `<image>` is the `helm-*` chart
-artifact name.
+Helm charts use the separate chart prefix:
 
-Some plugins (`ucc`, `ddcs`, `storage_api`) set `helm_repo_url` in
+```text
+target: <aws_account>.dkr.ecr.<region>.amazonaws.com/<TARGET_CHART_REPOSITORY>/<chart>:<tag>
+```
+
+For an OCI source chart, `<chart>` is the manifest's `helm-*` artifact name.
+For an HTTP source chart, `<chart>` drops the `helm-` prefix.
+
+Some plugins (`ucc`, `ddcs`, `ovdc`, `storage_api`) set `helm_repo_url` in
 `source-registry-config.yaml`: their charts are served over an HTTP Helm repo,
 not as OCI artifacts under `source_registry`. For those groups the chart name
 drops the `helm-` prefix and the chart is `helm pull`ed over HTTP and
@@ -121,8 +135,27 @@ done
 : "${AWS_REGION:?Set AWS_REGION}"
 : "${CLUSTER_NAME:?Set CLUSTER_NAME}"
 TARGET_REPOSITORY="${TARGET_REPOSITORY:-$CLUSTER_NAME}"
+while [[ "$TARGET_REPOSITORY" == */ ]]; do
+  TARGET_REPOSITORY="${TARGET_REPOSITORY%/}"
+done
 if [[ -z "$TARGET_REPOSITORY" ]]; then
   echo "ERROR: TARGET_REPOSITORY is empty. Set it or CLUSTER_NAME." >&2
+  exit 1
+fi
+TARGET_IMAGE_REPOSITORY="${TARGET_IMAGE_REPOSITORY:-$TARGET_REPOSITORY}"
+TARGET_CHART_REPOSITORY="${TARGET_CHART_REPOSITORY:-${TARGET_REPOSITORY}/charts}"
+while [[ "$TARGET_IMAGE_REPOSITORY" == */ ]]; do
+  TARGET_IMAGE_REPOSITORY="${TARGET_IMAGE_REPOSITORY%/}"
+done
+while [[ "$TARGET_CHART_REPOSITORY" == */ ]]; do
+  TARGET_CHART_REPOSITORY="${TARGET_CHART_REPOSITORY%/}"
+done
+if [[ -z "$TARGET_IMAGE_REPOSITORY" || -z "$TARGET_CHART_REPOSITORY" ]]; then
+  echo "ERROR: image and chart repository prefixes must both be non-empty." >&2
+  exit 1
+fi
+if [[ "$TARGET_IMAGE_REPOSITORY" == "$TARGET_CHART_REPOSITORY" ]]; then
+  echo "ERROR: TARGET_IMAGE_REPOSITORY and TARGET_CHART_REPOSITORY must differ." >&2
   exit 1
 fi
 
@@ -157,14 +190,8 @@ fi
 
 plugin_for_group() {
   case "$1" in
-    nvcf-self-managed-stack) printf '%s\n' nvcf_self_managed_stack ;;
-    nvcf-compute-plane-stack) printf '%s\n' nvcf_compute_plane_stack ;;
-    container_cache) printf '%s\n' container_cache ;;
-    gxcache) printf '%s\n' gxcache ;;
-    ucc) printf '%s\n' ucc ;;
-    ddcs) printf '%s\n' ddcs ;;
-    lls) printf '%s\n' lls ;;
     storage-api) printf '%s\n' storage_service storage_api ;;
+    *) printf '%s\n' "${1//-/_}" ;;
   esac
 }
 
@@ -237,7 +264,11 @@ EOF
 : > "$HELM_HTTP"
 
 mapfile -t ALL_GROUPS < <(
-  yq -r 'keys | .[] | select(. != "version" and . != "generated_at")' "$MANIFEST_PATH"
+  yq -r '
+    to_entries | .[]
+    | select(.value | type == "!!map")
+    | .key
+  ' "$MANIFEST_PATH"
 )
 
 # NB: do NOT name this array GROUPS — bash auto-populates a special read-only
@@ -283,7 +314,7 @@ for group in "${SELECTED_GROUPS[@]}"; do
     # dropped) and pushed to ECR, not OCI-copied via regsync.
     if [[ "$kind" == "helm" && -n "$helm_repo_url" ]]; then
       chart="${name#helm-}"
-      repo="${TARGET_REPOSITORY}/${chart}"
+      repo="${TARGET_CHART_REPOSITORY}/${chart}"
       printf '%s\n' "$repo" >> "$REPOS"
       printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "helm-http" "$group" "$chart" "$tag" "$repo" "${helm_repo_url}/${chart}" "${ECR_REGISTRY}/${repo}" >> "$INVENTORY"
@@ -291,7 +322,11 @@ for group in "${SELECTED_GROUPS[@]}"; do
       continue
     fi
 
-    repo="${TARGET_REPOSITORY}/${name}"
+    if [[ "$kind" == "helm" ]]; then
+      repo="${TARGET_CHART_REPOSITORY}/${name}"
+    else
+      repo="${TARGET_IMAGE_REPOSITORY}/${name}"
+    fi
     source="${source_registry}/${name}:${tag}"
     target="${ECR_REGISTRY}/${repo}:${tag}"
 
@@ -312,6 +347,26 @@ EOF
     | \$name + \":\" + \$tag
   " "$MANIFEST_PATH")
 done
+
+# A target tag can reference only one OCI manifest. Permit repeated inventory
+# rows for the exact same artifact, but reject image/chart or source collisions
+# before creating repositories or copying anything.
+awk -F '\t' '
+  {
+    key = $5 SUBSEP $4
+    signature = $1 SUBSEP $3 SUBSEP $6
+    label = $2 "/" $3 " (" $1 ", source=" $6 ")"
+    if ((key in signatures) && signatures[key] != signature) {
+      printf "ERROR: target collision at %s:%s between %s and %s\n", \
+        $5, $4, labels[key], label > "/dev/stderr"
+      collision = 1
+    } else {
+      signatures[key] = signature
+      labels[key] = label
+    }
+  }
+  END { exit collision }
+' "$INVENTORY"
 
 sort -u "$REPOS" -o "$REPOS"
 
@@ -362,6 +417,18 @@ while IFS= read -r repo; do
     >/dev/null
 done < "$REPOS"
 
+# Scope registry/repo credentials to this run so a concurrent mirror or a
+# parallel deploy on the same host cannot overwrite them. helm and docker
+# otherwise share host-global config files and keep only the last login per
+# host, so an overlapping login (another run's ECR or nvcr.io login) clobbers
+# this one and pulls then fail with a misleading 403 that looks like a bad key.
+REGISTRY_CONFIG_DIR="$(mktemp -d -t ecr-mirror-auth.XXXXXX)"
+trap 'rm -rf "$REGISTRY_CONFIG_DIR"' EXIT
+export DOCKER_CONFIG="$REGISTRY_CONFIG_DIR"
+export HELM_REGISTRY_CONFIG="$REGISTRY_CONFIG_DIR/helm-registry.json"
+export HELM_REPOSITORY_CONFIG="$REGISTRY_CONFIG_DIR/helm-repositories.yaml"
+export HELM_REPOSITORY_CACHE="$REGISTRY_CONFIG_DIR/helm-cache"
+
 export ECR_PASSWORD
 ECR_PASSWORD="$(aws ecr get-login-password --region "$AWS_REGION")"
 regsync once -c "$CONFIG"
@@ -372,7 +439,7 @@ if [[ -s "$HELM_HTTP" ]]; then
   echo "--- Mirroring HTTP helm charts ---"
   echo "$ECR_PASSWORD" | helm registry login --username AWS --password-stdin "$ECR_REGISTRY"
   CHARTS_DIR="$(mktemp -d -t ecr-mirror-charts.XXXXXX)"
-  trap 'rm -rf "$CHARTS_DIR"' EXIT
+  trap 'rm -rf "$CHARTS_DIR" "$REGISTRY_CONFIG_DIR"' EXIT
   declare -A HELM_REPO_ADDED=()
   while IFS=$'\t' read -r group chart tag repo; do
     helm_repo_url="$(helm_repo_url_for_group "$group")"
@@ -384,7 +451,7 @@ if [[ -s "$HELM_HTTP" ]]; then
       HELM_REPO_ADDED[$alias]=1
     fi
     helm pull "$alias/$chart" --version "$tag" -d "$CHARTS_DIR"
-    helm push "$CHARTS_DIR/${chart}-${tag}.tgz" "oci://${ECR_REGISTRY}/${TARGET_REPOSITORY}"
+    helm push "$CHARTS_DIR/${chart}-${tag}.tgz" "oci://${ECR_REGISTRY}/${TARGET_CHART_REPOSITORY}"
     rm -f "$CHARTS_DIR/${chart}-${tag}.tgz"
   done < "$HELM_HTTP"
 fi
@@ -394,8 +461,8 @@ unset ECR_PASSWORD
 This creates missing ECR repositories before mirroring:
 
 ```text
-${TARGET_REPOSITORY}/${image}
-${TARGET_REPOSITORY}/${chart}
+${TARGET_IMAGE_REPOSITORY}/${image}
+${TARGET_CHART_REPOSITORY}/${chart}
 ```
 
 ## NVCF Helmfile Handoff
@@ -407,11 +474,11 @@ OCI charts from ECR:
 global:
   image:
     registry: <aws_account>.dkr.ecr.<region>.amazonaws.com
-    repository: <TARGET_REPOSITORY>
+    repository: <TARGET_IMAGE_REPOSITORY>
   helm:
     sources:
       registry: <aws_account>.dkr.ecr.<region>.amazonaws.com
-      repository: <TARGET_REPOSITORY>
+      repository: <TARGET_CHART_REPOSITORY>
 ```
 
 For EKS pulls, confirm the node role or pod identity has ECR read access:
@@ -447,29 +514,35 @@ For a local dry-run count check against the current manifest:
 
 ```bash
 MANIFEST_PATH=image-manifest/manifest.yaml
+SKIP_KEYS="${SKIP_KEYS:-nvcf-stack}"
+# The mirror script drops SKIP_KEYS entries from the inventory; exclude them here too.
+count_unskipped() {
+  awk -v skip="$SKIP_KEYS" '
+    BEGIN { n = split(skip, s, ","); for (i = 1; i <= n; i++) skipped[s[i]] }
+    !($0 in skipped) { count++ }
+    END { print count + 0 }
+  '
+}
 IMAGE_COUNT=$(yq -r '
   to_entries | .[]
-  | select(.key != "version" and .key != "generated_at")
+  | select(.value | type == "!!map")
   | .value | to_entries | .[]
   | select(.key | test("^helm-") | not)
-  | (.value | if type == "array" then .[] else . end)
-  | "x"
-' "$MANIFEST_PATH" | wc -l | tr -d ' ')
+  | (.value | [.] | flatten | .[]) as $tag
+  | .key
+' "$MANIFEST_PATH" | count_unskipped)
 CHART_COUNT=$(yq -r '
   to_entries | .[]
-  | select(.key != "version" and .key != "generated_at")
+  | select(.value | type == "!!map")
   | .value | to_entries | .[]
   | select(.key | test("^helm-"))
-  | (.value | if type == "array" then .[] else . end)
-  | "x"
-' "$MANIFEST_PATH" | wc -l | tr -d ' ')
+  | (.value | [.] | flatten | .[]) as $tag
+  | .key
+' "$MANIFEST_PATH" | count_unskipped)
 echo "images=$IMAGE_COUNT charts=$CHART_COUNT"
-```
-
-Expected for the referenced manifest:
-
-```text
-images=42 charts=20
+INVENTORY_IMAGE_COUNT=$(awk -F '\t' '$1 == "image" { count++ } END { print count + 0 }' generated/ecr-inventory.tsv)
+INVENTORY_CHART_COUNT=$(awk -F '\t' '$1 == "helm" || $1 == "helm-http" { count++ } END { print count + 0 }' generated/ecr-inventory.tsv)
+test "$IMAGE_COUNT" -eq "$INVENTORY_IMAGE_COUNT" && test "$CHART_COUNT" -eq "$INVENTORY_CHART_COUNT"
 ```
 
 ## Troubleshooting
@@ -478,6 +551,7 @@ images=42 charts=20
 |---|---|---|
 | Generated entry count is lower than manifest count | Source registry config is missing or a group cannot resolve | Provide `image-manifest/source-registry-config.yaml`; only use env fallbacks when that file is unavailable. |
 | `TARGET_REPOSITORY` is empty | Both `TARGET_REPOSITORY` and `CLUSTER_NAME` are unset | Stop and set one; do not mirror to the registry root. |
+| Preflight reports a target collision | Two distinct artifacts resolve to the same ECR repository and tag | Keep `TARGET_IMAGE_REPOSITORY` and `TARGET_CHART_REPOSITORY` separate; inspect the reported inventory rows before mirroring. |
 | Image pull fails after a successful mirror | Chart-rendered image name differs from manifest name or the source registry content drifted | Compare chart render output with `generated/ecr-inventory.tsv`, then mirror the exact rendered image or update the manifest/source mapping. |
 
 Live deployment drift observed:
@@ -492,16 +566,20 @@ Live deployment drift observed:
 - `nats-auth-callout-service:0.3.3` existed in ECR as
   `ov-qa-cluster/nvcf-nats-auth-callout-service:0.3.3`.
 
-Do not hardcode `ov-qa-cluster`; use `${TARGET_REPOSITORY}`. The observed names
-are only examples for diagnosing chart/render drift.
+Do not hardcode `ov-qa-cluster`; use the configured image or chart repository
+prefix. The observed names are only examples for diagnosing chart/render drift.
 
 ## Validation Checklist
 
 - [ ] Mirror workflow consumes `image-manifest/manifest.yaml` as source of truth.
 - [ ] Mirror workflow resolves source registries from `source-registry-config.yaml`.
+- [ ] Base, image, and chart repository prefixes have no trailing slash.
+- [ ] Only map-valued manifest groups are enumerated; scalar metadata such as `schema_version`, `version`, and `generated_at` is ignored.
 - [ ] Scalar and list-valued tags both produce sync entries.
 - [ ] Non-helm image entries are all present in generated regsync config.
 - [ ] `helm-*` chart entries are present when `INCLUDE_HELM_CHARTS=true`.
+- [ ] Images and charts use separate repository prefixes.
+- [ ] Preflight rejects distinct artifacts that resolve to the same target repository and tag.
 - [ ] Missing ECR repositories are created before `regsync once`.
 - [ ] No secret values are printed or written into generated files.
 - [ ] Verification checks every generated inventory row in ECR.

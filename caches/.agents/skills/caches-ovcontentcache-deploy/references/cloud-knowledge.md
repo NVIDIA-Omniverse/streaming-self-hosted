@@ -1,7 +1,7 @@
 
 # OVCC Cloud Knowledge Base
 
-Cloud-specific operational details for OVCC deployments. Use these sections during the conversation to inform advice. Each section contains operational facts an LLM would not know without domain context. OVCC 4.0.x ships the UCC 3.0 runtime unchanged (`usd-content-cache:3.0.1`), so all runtime/network behavior below carries forward from UCC.
+Cloud-specific operational details for OVCC deployments. Use these sections during the conversation to inform advice. This skill uses chart 4.0.4 with `usd-content-cache:3.0.2`. The operational guidance originates with UCC; validate historical sizing and performance observations for the selected image and workload.
 
 ## GKE
 
@@ -60,7 +60,7 @@ install will succeed but PVCs will fail to attach with
 pd-ssd throughput scales linearly: `0.48 MB/s × disk_size_GB`, capped
 at 1,200 MB/s. A 2,048 GiB PVC delivers ~983 MB/s.
 
-**GCS backend is built in.** The OVCC runtime (`usd-content-cache:3.0.1`) includes the GCS backend, and the `ovcontentcache` chart (>= 4.0.x) enables `azure`, `s3`, `gcs`, and `nucleus` by default. When deploying for GCS, no special chart version is needed beyond the `4.0.4` pin; just ensure the `gcs` backend is included (it is by default) and provide HMAC credentials.
+**GCS backend is built in.** The OVCC runtime (`usd-content-cache:3.0.2`) includes the GCS backend, and the `ovcontentcache` chart (>= 4.0.x) enables `azure`, `s3`, `gcs`, and `nucleus` by default. When deploying for GCS, no special chart version is needed beyond the `4.0.4` pin; just ensure the `gcs` backend is included (it is by default) and provide HMAC credentials.
 
 **Monitoring.** Use `metrics.prometheus.podMonitoring.enabled=true` on GKE. The ServiceMonitor CRD does not exist on GKE — setting `serviceMonitor.enabled=true` will fail silently (no scraping). GKE Managed Prometheus runs as a DaemonSet in `gmp-system` and is enabled by default on new clusters.
 
@@ -179,7 +179,7 @@ worker_connections = (Max_SNAT / Num_Pods / Num_vCPUs) × 1.2
 
 **Monitoring.** Use `metrics.prometheus.serviceMonitor.enabled=true` on AKS (same as EKS). PodMonitoring is GKE-only.
 
-**MEGA 0.2.11 production baseline (Azure).** Reference for sizing comparisons (collected on the predecessor UCC deployment; runtime is identical to OVCC 4.0.x):
+**MEGA 0.2.11 production baseline (Azure).** Historical reference for sizing comparisons, collected on the predecessor UCC deployment; revalidate for OVCC image 3.0.2:
 
 | Property | Value |
 |---|---|
@@ -201,7 +201,8 @@ worker_connections = (Max_SNAT / Num_Pods / Num_vCPUs) × 1.2
 | GKE (g4) | `hyperdisk-extreme` | `pd-ssd`, `pd-extreme`, untuned `hyperdisk-balanced` | `pd.csi.storage.gke.io` | Default for the `ovcc-gcp-g4-*-values.yaml` references per in-cluster fio benchmark; ~1.7x write throughput vs untuned hyperdisk-balanced at 128 GiB. |
 | GKE (c4, g2) | tuned `hyperdisk-balanced` (`9600` IOPS / `2400Mi`) unless using supported local ephemeral SSD | `pd-ssd`, `pd-extreme` | `pd.csi.storage.gke.io` | Ask about ephemeral SSD if present; otherwise create tuned class manually |
 | GKE (n2) | `pd-extreme-rwo` | `pd-standard` | `pd.csi.storage.gke.io` | Must create manually |
-| EKS | `gp3` | `gp2` | `ebs.csi.eks.amazonaws.com` | `WaitForFirstConsumer` |
+| EKS | existing `gp3` class | `gp2` | `ebs.csi.aws.com` (standard); `ebs.csi.eks.amazonaws.com` (Auto Mode) | `WaitForFirstConsumer`; verify [EBS CSI prerequisites](https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html) |
+| On-prem | site-selected CSI class | assuming cloud classes exist | site driver | Select capacity, IOPS/throughput and topology for the workload; EKS examples are references only |
 | AKS | `managed-csi-premium-burst` | `managed-csi` | Built-in | Monitor burst credits |
 
 ### Backend keepalive defaults
