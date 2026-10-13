@@ -59,6 +59,8 @@ nvcf-self-managed-stack:
   nvcf-worker-init-oss: 1.2.1
   nvcf-worker-llm-credentials-oss: 1.1.2
   nvcf-worker-utils-oss: 1.2.3
+  # override package: nvcf_worker_niclls
+  # source version: 2.110.0
   nvcf_worker_niclls: 2.117.1
   nvct-service-oss: 1.66.0
   oss-vault-k8s: 1.7.4
