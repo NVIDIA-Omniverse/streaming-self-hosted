@@ -60,6 +60,20 @@ Required (must be set in `streaming-env.sh`):
 
 Optional (defaults documented in each child skill's Inputs table). If `streaming-env.sh` is missing a required var, the bootstrap fails fast with a single message listing every missing value (see [`streaming-env.sh.example`](../../../streaming-env.sh.example)).
 
+When the requested stack includes OVDC, collect these optional foundation
+capacity inputs and pass them unchanged to stages 03 and 07:
+
+| Variable | Default | Used by stages |
+|---|---|---|
+| `OVDC_REPLICAS` | `0` | 03, 07 |
+| `OVDC_MEMORY_REQUEST_GIB` | required when `OVDC_REPLICAS > 0` | 03, 07 |
+| `OVDC_PLATFORM_RESERVE_GIB` | `8` | 03, 07 |
+
+`OVDC_MEMORY_REQUEST_GIB` is the rendered OVDC pod memory request rounded up to
+GiB. When replicas are requested, Stage 03 must enable and size the CPU compute
+pool; Stage 07 must verify live allocatable memory. Never route OVDC to the GPU
+pool to compensate for an undersized CPU pool.
+
 ## Outputs
 
 Bootstrap artifacts in `generated/`, plus inter-stage env files written at runtime:
@@ -198,8 +212,9 @@ EOF
 2. Apply Stage 02 with Terraform:
    - Run `terraform -chdir=generated/<cluster>/aks-cluster init`.
    - Run `terraform -chdir=generated/<cluster>/aks-cluster apply -auto-approve`.
-   - Run the **Stage 02 Terraform handoff** above to write `generated/.env.aks-cluster`.
-   - Any non-zero exit → stop immediately. Report Stage 02 and the last lines of output. Do NOT proceed.
+   - Run the **Stage 02 Terraform handoff** above to write `generated/.env.aks-cluster`. The handoff's `az aks get-credentials` + `kubelogin` works only because Stage 02 grants `ADMIN_AAD_OBJECT_IDS` both "Cluster User Role" and "RBAC Cluster Admin" on the cluster — without that grant, every later `kubectl` (and stage 07) is `Forbidden` under `disable_local_accounts=true`.
+   - **Propagation-race exception:** an apply failure with `ResourceMissingPermissionError` (`…joinLoadBalancer…` on the API-server subnet) is Stage 01's Network Contributor grants still propagating, NOT a real failure. Propagation lag varies (typically ~60–90s but can run longer), so retry `terraform apply -auto-approve` (idempotent) with a short backoff for a **bounded window** — e.g. up to 5 attempts / ~10 minutes — before treating it as fatal.
+   - If the retries are exhausted, or the error is anything other than that propagation race → stop immediately. Report Stage 02 and the last lines of output. Do NOT proceed.
 3. Run stages 03 → 04 → 05 → 06 in order, with the same stop-on-failure semantics.
 4. Run `bash generated/stage07-<cluster>-validate.sh`.
    - **Tolerant execution:** always report the exit code, but do NOT treat a non-zero exit as a bootstrap failure.
@@ -323,6 +338,9 @@ This skill is a thin orchestrator. Validation defers to each child skill's own c
 - [ ] `NGC_API_KEY_FILE` was treated as a path-only input — the key value itself was never asked for or displayed
 - [ ] Format violations (ACR name with hyphens, `/32` in `AUTHORIZED_IP_RANGES`, wrong AAD object-ID shape) were caught and surfaced before generation continued
 - [ ] `streaming-env.sh` was read once and the same values flow into every stage
+- [ ] When `OVDC_REPLICAS > 0`, the OVDC capacity inputs flow unchanged to
+      stages 03 and 07, and the compute pool is enabled rather than using GPU
+      nodes as fallback capacity
 - [ ] Mode was detected from user intent and confirmed before generating
 - [ ] Ambiguous wording such as "set up an AKS cluster for me" maps to generate mode unless explicit execution language is present
 - [ ] **Generate mode:** run-order summary printed after all bootstrap artifacts are written

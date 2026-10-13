@@ -1,7 +1,7 @@
 ---
 name: ecr
 description: Generate Terraform for AWS ECR repositories and EKS pull access needed by KAS/NVCF. Use after eks-cluster or eks-nodes and before ecr-mirror; this skill creates repositories only and does not mirror images.
-version: "1.0.0"
+version: "1.1.0"
 author: NVIDIA Omniverse Streaming
 tags: ["aws", "ecr", "terraform", "registry"]
 tools: ["Shell", "Read", "Write"]
@@ -34,7 +34,9 @@ Optional:
 
 | Input | Default |
 |---|---|
-| `TARGET_REPOSITORY` | `${CLUSTER_NAME}` |
+| `TARGET_REPOSITORY` | `${CLUSTER_NAME}`, with trailing slashes removed |
+| `TARGET_IMAGE_REPOSITORY` | Normalized `${TARGET_REPOSITORY}` |
+| `TARGET_CHART_REPOSITORY` | Normalized `${TARGET_REPOSITORY}/charts` |
 | repository names | Derived from the manifest or declared by the caller |
 | scan on push | `true` |
 | encryption | `AES256` unless a KMS key is provided |
@@ -44,10 +46,14 @@ Optional:
 Create repositories with this naming convention:
 
 ```text
-${TARGET_REPOSITORY}/${image-or-chart-name}
+${TARGET_IMAGE_REPOSITORY}/${image-name}
+${TARGET_CHART_REPOSITORY}/${chart-name}
 ```
 
-Do not mirror to the registry root. Stop if `TARGET_REPOSITORY` is empty.
+Keep the image and chart prefixes distinct so equal image/chart names and tags
+cannot overwrite one another. Remove all trailing `/` characters from the base,
+image, and chart prefixes before deriving or joining repository paths. Do not
+mirror to the registry root. Stop if any normalized prefix is empty.
 
 ## Pull Permissions
 
@@ -84,12 +90,22 @@ output "ecr_registry" {
 output "ecr_repository_prefix" {
   value = var.target_repository
 }
+
+output "ecr_image_repository_prefix" {
+  value = var.target_image_repository
+}
+
+output "ecr_chart_repository_prefix" {
+  value = var.target_chart_repository
+}
 ```
 
 ## Validation Checklist
 
-- [ ] Repository prefix is non-empty.
-- [ ] Repository names use `${TARGET_REPOSITORY}/...`.
+- [ ] Base, image, and chart repository prefixes are non-empty and have no trailing slash.
+- [ ] Image repositories use `${TARGET_IMAGE_REPOSITORY}/...`.
+- [ ] Chart repositories use `${TARGET_CHART_REPOSITORY}/...`.
+- [ ] Image and chart repository prefixes differ.
 - [ ] EKS pull permissions are present.
 - [ ] No NGC credentials, ECR passwords, or mirror jobs are in Terraform.
 - [ ] `ecr-mirror` remains the only skill that copies images/charts.

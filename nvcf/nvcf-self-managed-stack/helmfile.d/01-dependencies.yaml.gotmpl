@@ -35,7 +35,7 @@ releases:
 
   # --- NVCF NCP Dependencies ---
   - name: nats
-    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-nats" "0.7.1" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-nats" "0.8.4" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
     condition: nats.enabled # From defaults.yaml or env overrides
     namespace: nats-system
     <<: *dependency # Inherits base values from the dependency template
@@ -47,7 +47,7 @@ releases:
     <<: *dependency
 
   - name: openbao-server # this name MUST not change
-    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-openbao-server" "0.30.25" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-openbao-server" "0.32.6" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
     condition: openbao.enabled # From defaults.yaml or env overrides
     namespace: vault-system
     <<: *dependency # Inherits base values from the dependency template
@@ -55,7 +55,7 @@ releases:
       - nats-system/nats
 
   - name: cassandra
-    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-cassandra" "0.18.0" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-cassandra" "0.21.3" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
     condition: cassandra.enabled # From defaults.yaml or env overrides
     namespace: cassandra-system
     <<: *dependency # Inherits base values from the dependency template

@@ -33,7 +33,7 @@ releases:
 
   # --- Observability Services ---
   - name: state-metrics
-    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-state-metrics" "1.0.1" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-state-metrics" "1.0.2" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
     namespace: nvcf
     condition: stateMetrics.enabled # From global.yaml.gotmpl or env overrides
     inherit:

@@ -198,6 +198,25 @@ echo "Wrote generated/.env.iam-vpc"
 Use `azurerm` provider `>= 4.46.0, < 5.0.0` — the version the `aks-cluster` AVM module (`= 0.5.4`) requires; keep the whole bootstrap on one azurerm 4.x line so Stages 01 and 02 share a provider. Requires Terraform `>= 1.11`. Pin AVM modules exactly per [`tf-conventions`](../tf-conventions/SKILL.md) Override 1. The role-assignment propagation guard uses `time_sleep`, so also declare the `hashicorp/time` provider in `providers.tf`.
 
 ```hcl
+terraform {
+  required_version = ">= 1.11"   # one azurerm 4.x line with aks-cluster (AVM 0.5.4)
+
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = ">= 4.46.0, < 5.0.0"
+    }
+    time = {
+      source  = "hashicorp/time"   # for the time_sleep RBAC-propagation guard below
+      version = "~> 0.11"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+}
+
 resource "azurerm_resource_group" "main" {
   name     = var.resource_group_name
   location = var.location

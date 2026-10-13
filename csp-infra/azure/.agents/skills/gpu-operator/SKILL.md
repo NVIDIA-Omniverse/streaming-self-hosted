@@ -45,8 +45,9 @@ Source from `streaming-env.sh` + `generated/.env.aks-cluster`.
 | `GPU_OPERATOR_VERSION` | Helm chart version | `v25.3.0` (pin to a known-good; verify newer before bumping) |
 | `GPU_OPERATOR_NAMESPACE` | Namespace | `gpu-operator` |
 | `GPU_DRIVER_SOURCE` | `aks` (default) or `operator` (see "GPU driver source" below) | `aks` |
-| `GPU_NODE_TAINT_KEY` | Taint key on the GPU pool (must match `aks-nodes`) | `sku` |
-| `GPU_NODE_TAINT_VALUE` | Taint value | `gpu` |
+| `GPU_NODE_TAINT_KEY` | Taint key for the GPU-pool toleration. **Auto-derived from `aks-nodes`' `GPU_NODE_TAINTS`** when that is set; only override if you must. | (from `GPU_NODE_TAINTS`, else `sku`) |
+| `GPU_NODE_TAINT_VALUE` | Taint value (same auto-derivation as the key) | (from `GPU_NODE_TAINTS`, else `gpu`) |
+| `GPU_NODE_TAINT_EFFECT` | Taint effect for the toleration (same auto-derivation; parsed from the `:effect` suffix) | (from `GPU_NODE_TAINTS`, else `NoSchedule`) |
 | `RUN_CUDA_TEST` | Run the `nvidia-smi` smoke pod after install | `false` |
 | `OUTPUT_FORMAT` | `bash` only (Helm, no TF) | `bash` |
 
@@ -103,8 +104,24 @@ source "$REPO_ROOT/generated/.env.aks-cluster"
 GPU_OPERATOR_VERSION="${GPU_OPERATOR_VERSION:-v25.3.0}"
 GPU_OPERATOR_NAMESPACE="${GPU_OPERATOR_NAMESPACE:-gpu-operator}"
 GPU_DRIVER_SOURCE="${GPU_DRIVER_SOURCE:-aks}"
+# GPU-pool taint toleration. aks-nodes owns the taint via GPU_NODE_TAINTS (free-form,
+# "key=value:effect", empty by default). Derive key/value/effect from it so the operands
+# tolerate whatever taint aks-nodes actually applied — otherwise an opt-in taint with a
+# non-default key OR a non-NoSchedule effect leaves the driver/NFD-worker DaemonSets Pending.
+# Falls back to the historical sku=gpu:NoSchedule when GPU_NODE_TAINTS is unset (harmless
+# no-op on the default untainted pool).
+GPU_NODE_TAINTS="${GPU_NODE_TAINTS:-}"
+if [[ -n "$GPU_NODE_TAINTS" ]]; then
+  _first_taint="${GPU_NODE_TAINTS%%,*}"                       # key=value:effect
+  GPU_NODE_TAINT_KEY="${GPU_NODE_TAINT_KEY:-${_first_taint%%=*}}"
+  _tv="${_first_taint#*=}"                                    # value:effect
+  GPU_NODE_TAINT_VALUE="${GPU_NODE_TAINT_VALUE:-${_tv%%:*}}"
+  _te="${_first_taint##*:}"                                   # effect (== whole string if no ':')
+  [[ "$_te" != "$_first_taint" ]] && GPU_NODE_TAINT_EFFECT="${GPU_NODE_TAINT_EFFECT:-$_te}"
+fi
 GPU_NODE_TAINT_KEY="${GPU_NODE_TAINT_KEY:-sku}"
 GPU_NODE_TAINT_VALUE="${GPU_NODE_TAINT_VALUE:-gpu}"
+GPU_NODE_TAINT_EFFECT="${GPU_NODE_TAINT_EFFECT:-NoSchedule}"
 RUN_CUDA_TEST="${RUN_CUDA_TEST:-false}"
 
 export KUBECONFIG="${KUBECONFIG:-/tmp/kubeconfig-${CLUSTER_NAME}}"
@@ -168,8 +185,8 @@ install_operator() {
     --set driver.enabled="$DRIVER_ENABLED" \
     --set toolkit.enabled=true \
     --set cdi.enabled=true --set cdi.default=true \
-    --set "daemonsets.tolerations[0].key=$GPU_NODE_TAINT_KEY,daemonsets.tolerations[0].operator=Equal,daemonsets.tolerations[0].value=$GPU_NODE_TAINT_VALUE,daemonsets.tolerations[0].effect=NoSchedule" \
-    --set "node-feature-discovery.worker.tolerations[0].key=$GPU_NODE_TAINT_KEY,node-feature-discovery.worker.tolerations[0].operator=Equal,node-feature-discovery.worker.tolerations[0].value=$GPU_NODE_TAINT_VALUE,node-feature-discovery.worker.tolerations[0].effect=NoSchedule"
+    --set "daemonsets.tolerations[0].key=$GPU_NODE_TAINT_KEY,daemonsets.tolerations[0].operator=Equal,daemonsets.tolerations[0].value=$GPU_NODE_TAINT_VALUE,daemonsets.tolerations[0].effect=$GPU_NODE_TAINT_EFFECT" \
+    --set "node-feature-discovery.worker.tolerations[0].key=$GPU_NODE_TAINT_KEY,node-feature-discovery.worker.tolerations[0].operator=Equal,node-feature-discovery.worker.tolerations[0].value=$GPU_NODE_TAINT_VALUE,node-feature-discovery.worker.tolerations[0].effect=$GPU_NODE_TAINT_EFFECT"
     # No CriticalAddonsOnly toleration for the control plane (operator / NFD master / NFD gc):
     # aks-cluster no longer taints the system pool, so those no-GPU Deployments schedule on it
     # directly. The operator chart's default operator.tolerations (including nvidia.com/gpu) is left
@@ -201,7 +218,7 @@ metadata: { name: cuda-smoke, namespace: default }
 spec:
   restartPolicy: Never
   tolerations:
-    - { key: "$GPU_NODE_TAINT_KEY", operator: Equal, value: "$GPU_NODE_TAINT_VALUE", effect: NoSchedule }
+    - { key: "$GPU_NODE_TAINT_KEY", operator: Equal, value: "$GPU_NODE_TAINT_VALUE", effect: $GPU_NODE_TAINT_EFFECT }
   containers:
     - name: nvidia-smi
       image: nvcr.io/nvidia/cuda:12.1.0-base-ubuntu22.04

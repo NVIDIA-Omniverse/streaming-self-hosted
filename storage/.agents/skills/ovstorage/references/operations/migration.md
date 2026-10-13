@@ -37,7 +37,7 @@
 
 ## Overview[\#](#overview "Link to this heading")
 
-Our Nucleus Migration Tool is designed to ease the transition from Enterprise Nucleus Server to a deployment of Omniverse Storage services. This will allow you to migrate your file content data, metadata, and user permissions requiring minimal downtime and allowing for iterative migration allowing you to limit end-user impact.
+The Nucleus Migration Tool migrates file content, metadata, and user permissions from Enterprise Nucleus Server to Omniverse Storage services. Iterative migration reduces downtime and end-user impact.
 
 </div>
 

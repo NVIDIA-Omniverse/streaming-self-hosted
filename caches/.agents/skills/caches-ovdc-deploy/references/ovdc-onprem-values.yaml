@@ -1,0 +1,48 @@
+# OVDC 6.0.1 PVC example; adapt capacity, memory and placement to the workload.
+# See ovdc-eks-values.yaml for a configuration reference only.
+# Choose site storage/placement independently; no AWS dependency or node label.
+# Required: STORAGE_CLASS, passed as storage.volume.storageClassName by the script.
+# Prometheus /metrics stays enabled; unconfigured OTLP exporters are disabled.
+fullnameOverride: ovdc
+selfAntiAffinity: false
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchExpressions:
+        - key: app.kubernetes.io/name
+          operator: In
+          values:
+          - ovderivedcache
+      topologyKey: kubernetes.io/hostname
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        namespaceSelector: {}
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - ovcc
+            - usd-content-cache
+        topologyKey: kubernetes.io/hostname
+storage:
+  volume:
+    storageClassName: ""
+    size: 600Gi
+resources:
+  requests:
+    memory: 16Gi
+settings:
+  store:
+    maxSize: 512G
+  otelTraces:
+    exporter: none
+  otelLogs:
+    exporter: none
+  otelMetrics:
+    exporter: none
+presets:
+  cpu: 4
+  ram: 12GB

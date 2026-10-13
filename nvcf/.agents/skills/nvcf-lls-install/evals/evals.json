@@ -34,7 +34,7 @@
       "The agent read nvcf-lls-install/SKILL.md and then providers/kubernetes.md",
       "The agent used mirrored chart and image assumptions without naming a specific provider registry",
       "The agent planned a dedicated public UDP 5004 path targeting the configured streaming-proxy backend",
-      "The agent used the streaming node selector and public endpoint for env.lbDns",
+      "The agent used the streaming node selector and public endpoint for top-level lbDns",
       "The agent avoided copying frontend address, role, registry, identity, or storage assumptions from another provider"
     ]
   },
@@ -42,14 +42,80 @@
     "id": "LLS4-tcp-turn-provider-adaptation",
     "question": "Enable TCP TURN for NVCF LLS on a self-managed Kubernetes cluster. The downstream repo will provide the load balancer and rendered values.",
     "expected_skill": "nvcf-lls-install",
-    "ground_truth": "The agent selected nvcf-lls-install, kept provider load-balancer and registry details downstream-owned, required tcpTurn-enabled rendered values with the turn image, planned public TCP 3478 ingress to turn-service, and verified turn-service readiness plus TCP reachability from tcpTurn.enabled without adding deploy orchestration to the shared skill.",
+    "ground_truth": "The agent selected nvcf-lls-install, kept provider load-balancer and registry details downstream-owned, required tcpTurn-enabled rendered values with the turn image, selected plain TCP 3478 to NodePort 30885 or TLS 5349 to NodePort 30886, prepared OpenBao prerequisites and matching certificate handling, and verified turn-service readiness plus TCP reachability from tcpTurn.enabled without adding deploy orchestration to the shared skill.",
     "expected_behavior": [
       "The agent read nvcf-lls-install/SKILL.md and then providers/kubernetes.md",
       "The agent treated TCP TURN as optional and values-driven through tcpTurn.enabled",
       "The agent required the downstream values file to include the turn image and tcpTurn public endpoint settings",
-      "The agent required a downstream-owned public TCP 3478 ingress path to turn-service",
-      "The agent verified turn-service rollout and TCP 3478 reachability when tcpTurn.enabled is true",
-      "The agent did not add CSP-specific load-balancer, firewall/security, or credential-management logic to this pure skill repo"
+      "The agent required a downstream-owned ingress path to the selected TCP/TLS TURN port",
+      "The agent verified turn-service rollout and the selected TURN endpoint reachability when tcpTurn.enabled is true",
+      "The agent did not add CSP-specific load-balancer, firewall/security, or credential-management logic to this pure skill repo",
+      "The agent requires a valid OpenBao certificate bundle even for plain TCP and does not expect the TLS-only hook to seed it in that mode",
+      "For TLS the agent uses the OpenBao hook image with a shell and bao, protects the certificate values and hook logs, and requires client trust plus hostname verification"
+    ]
+  },
+  {
+    "id": "LLS5-direct-nodeport-advertisement",
+    "question": "Deploy LLS on our self-managed cluster using direct NodePort access. The selected UDP Service nodePort is 31742, with port and targetPort 5004. There is no external load balancer or NAT. What values should the deployment use, and how should we verify them?",
+    "expected_skill": "nvcf-lls-install",
+    "ground_truth": "Advertise the reachable node address and UDP 31742, derived from this Service, while preserving internal port 5004. Correct the chart advertisement values and verify both rendered/live port variables and browser media.",
+    "expected_behavior": [
+      "The agent derives 31742 from the selected UDP Service nodePort instead of copying 5004 or the incident-specific 30504",
+      "The agent verifies rendered and live LB_DNS matches the resolved reachable node address and rejects a wrong advertised host even when both advertised ports are correct",
+      "The agent uses the selected chart schema, including gnatUdp.env.lbPort where applicable, and verifies LB_PORT and NVCF_LLS_LOAD_BALANCER_PORT both resolve to 31742",
+      "The agent preserves internal listener/targetPort settings and does not add a load balancer or change externalTrafficPolicy merely to fix advertisement",
+      "The agent persists the fix in downstream values and requires a matching browser ICE candidate and advancing decoded frames"
+    ]
+  },
+  {
+    "id": "LLS6-translated-frontend-advertisement",
+    "question": "Our UDP NLB listens publicly on 15432 and forwards to a Service NodePort 31742, targeting pod port 5004. Which media port should LLS advertise?",
+    "expected_skill": "nvcf-lls-install",
+    "ground_truth": "Advertise 15432 from the external frontend, not the intermediate NodePort or pod listener.",
+    "expected_behavior": [
+      "The agent identifies the actual client-facing NLB listener as the advertisement source",
+      "The agent verifies rendered and live LB_DNS matches the resolved public frontend host and rejects a wrong advertised host even when both advertised ports are correct",
+      "The agent sets and verifies both rendered advertisement variables to 15432 while preserving backend 31742 and internal 5004",
+      "The agent verifies firewall reachability and browser ICE/media against the public frontend"
+    ]
+  },
+  {
+    "id": "LLS7-unresolved-media-endpoint",
+    "question": "Install LLS for this self-managed cluster. We have not decided whether clients will connect through a direct NodePort, NAT, or a load balancer, and there is no assigned public endpoint yet.",
+    "expected_skill": "nvcf-lls-install",
+    "ground_truth": "Resolve the ingress topology and endpoint before rendering advertisement settings; do not invent a public port from chart defaults or a prior deployment.",
+    "expected_behavior": [
+      "The agent asks for or discovers downstream ingress topology, externally reachable host, and UDP port before applying endpoint configuration",
+      "The agent does not silently default the external media port to 5004, 30504, or 30505",
+      "The agent distinguishes internal chart listener contracts from downstream external endpoint choices"
+    ]
+  },
+  {
+    "id": "LLS8-tls-turn-certificate-hook",
+    "question": "Configure TLS TURN using gdn-streaming 3.0.0. Can we reuse turn:4.0.2 for certSetup.image and just test TCP port 3478?",
+    "expected_skill": "nvcf-lls-install",
+    "ground_truth": "The TURN image lacks /bin/sh, so use the pinned OpenBao image for the certificate hook, supply the private PEM bundle through a protected values file, and expose TLS port 5349 to NodePort 30886. Verify trusted TLS plus TURN media separately.",
+    "expected_behavior": [
+      "The agent uses tcpTurn.certSetup.image with the pinned OpenBao image or its mirror, not the TURN image",
+      "The agent provides a hostname-matching certificate chain/private key in the protected certificate values file and includes it when rendering and installing",
+      "The agent checks the in-cluster OpenBao, HMAC and injector prerequisites without dumping credentials or hook logs",
+      "The agent chooses TLS port 5349 and NodePort 30886, validates the hostname and issuer trust, and does not claim media success from a socket probe",
+      "The agent does not assume enabling TLS disables the plain TCP listener; it exposes only the intended mode and checks actual sockets"
+    ]
+  },
+  {
+    "id": "LLS9-shared-cluster-hook-isolation",
+    "question": "Test the chart certificate hook and replace a test node on our shared cluster while other users may be streaming. Can we install another release in a new namespace and use a Helm post-renderer to isolate it? Do not change the existing release or invoke other users' functions.",
+    "expected_skill": "nvcf-lls-install",
+    "ground_truth": "A release namespace and Helm 3 post-renderer do not isolate the hardcoded certificate hook. Inspect all rendered hook destinations, use disposable OpenBao and separate ingress/nodes, and preserve the shared deployment. Verify target lifecycle and TLS without claiming media coverage.",
+    "expected_behavior": [
+      "The agent reads references/isolated-validation.md before any mutation",
+      "The agent identifies the hook Job/Secret namespace and OpenBao address, isolates them in a temporary chart copy and verifies the complete Helm render before installing",
+      "The agent sets the diagnostic injector service address as well as the ConfigMap address and checks rendered selectors/tolerations",
+      "The agent preserves existing webhook opt-in selectors and avoids installing a competing ingress controller",
+      "The agent checks for foreign workloads before draining only the owned test node, and verifies automatic registration and deregistration",
+      "The agent distinguishes internal TLS, external TLS, controlled replacement and full TURN/media evidence, including failed checks",
+      "The agent removes only owned diagnostic resources and verifies shared state against its baseline without exposing secret material"
     ]
   }
 ]

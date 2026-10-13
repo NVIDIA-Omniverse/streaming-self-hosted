@@ -20,7 +20,7 @@ for end-to-end AWS foundation work; it should not carry detailed Terraform,
 node, GPU Operator, or validation logic directly.
 
 Use this for infra setup only. Use later NVCF skills for runtime installation,
-NVCA, functions, stream validation, caches, UCC, DDCS, or storage APIs. Use
+NVCA, functions, stream validation, caches, UCC, OVDC, or storage APIs. Use
 `ecr-mirror` after ECR exists when images or OCI Helm charts need to be mirrored
 from NGC into ECR.
 
@@ -79,6 +79,22 @@ Confirm these when missing:
 | compute min/max | `1` / `3` |
 | GPU Operator version | `25.3.1` unless the user pins another validated version |
 
+When the requested stack includes OVDC, collect these values before generating
+the compute node group and pass them unchanged to `eks-nodes` and
+`eks-validate`:
+
+| Input | Default | Notes |
+|---|---|---|
+| `OVDC_REPLICAS` | `0` | `0` means OVDC capacity is not part of this foundation run. |
+| `OVDC_MEMORY_REQUEST_GIB` | required when `OVDC_REPLICAS > 0` | Rendered OVDC pod memory request, rounded up to GiB. |
+| `OVDC_PLATFORM_RESERVE_GIB` | `8` | Per-node allocatable-memory headroom for Kubernetes and other platform services. |
+
+The `m6i.2xlarge` compute default applies only when OVDC capacity is not
+requested. For OVDC, `eks-nodes` must select a CPU instance class whose memory
+can satisfy the rendered request plus reserve, and `eks-validate` must gate on
+the joined node's Kubernetes allocatable memory. Do not use a GPU node as an
+OVDC capacity fallback.
+
 ## Mode Detection
 
 Default to generate mode: create Terraform and helper scripts for review under
@@ -100,10 +116,15 @@ Only enter destroy mode when the user explicitly requests teardown or cleanup:
 2. Use `aws-iam-vpc`, `eks-cluster`, `eks-nodes`, `eks-storage`, and `ecr` to
    generate the Terraform root stack for
    `generated/terraform/aws/envs/<cluster>/`. The `eks-storage` IAM policy
-   attachment goes in the same root module as `eks-nodes`.
+   attachment goes in the same root module as `eks-nodes`. When
+   `OVDC_REPLICAS > 0`, size the compute group through the OVDC capacity
+   contract above and set compute desired/minimum capacity to at least the
+   replica count.
 3. Use `eks-storage` to generate `generated/<cluster>-storage.sh`.
 4. Use `eks-gpu-operator` to generate `generated/<cluster>-gpu-operator.sh`.
-5. Use `eks-validate` to generate `generated/<cluster>-validate.sh`.
+5. Use `eks-validate` to generate `generated/<cluster>-validate.sh`. Pass the
+   OVDC capacity inputs so the script verifies the live CPU-node allocatable
+   memory before the foundation is accepted.
 6. Print the generated paths and the exact command order for review.
 
 Expected generated layout:
@@ -155,27 +176,132 @@ confirmation:
 You are about to destroy the full AWS stack for cluster <CLUSTER_NAME>:
 
   Step 1 - GPU operator (Helm):  helm uninstall gpu-operator
-  Step 2 - AWS infra (Terraform): terraform destroy deletes VPC, EKS, ECR, IAM
+  Step 2 - Cloud resources k8s made outside Terraform: delete LoadBalancer
+           Services (Classic ELB + k8s-elb-* SG + ENIs) and PVCs
+  Step 3 - AWS infra (Terraform): terraform destroy deletes VPC, EKS, ECR, IAM
+  Step 4 - Sweep leaked EBS volumes tagged kubernetes.io/cluster/<CLUSTER_NAME>
 
 Type the cluster name to confirm:
 ```
 
 Only proceed if the user types the cluster name exactly.
 
-Destroy in reverse order:
+Destroy in reverse order. A real deployment provisions AWS resources *outside*
+Terraform state — the ingress/Envoy Gateway `Service type=LoadBalancer` creates a
+Classic ELB plus a non-default `k8s-elb-*` security group, and every NVCF PVC
+(Cassandra/OpenBao/NATS/OVDC/UCC) creates a CSI-owned EBS volume. Terraform does
+not own these, so they must be cleared before `terraform destroy` (the orphaned
+ELB security group otherwise blocks `DeleteVpc` with a `DependencyViolation`) and
+leaked volumes swept afterward. Requires `AWS_REGION` in scope.
+
+**Scoping guarantee.** The added steps never touch Terraform-owned resources
+(`terraform destroy` handles those) and never touch another cluster's resources.
+Kubernetes stamps `kubernetes.io/cluster/<CLUSTER_NAME> = owned` on exactly the
+resources it provisions for *this* cluster; deletes are gated on that tag being
+`owned` (never `shared`), on this cluster's VPC, and — for volumes — on the
+CSI-only `kubernetes.io/created-for/pvc/name` tag plus `status=available`
+(detached). The two account-wide destructive branches (force-deleting a stalled
+ELB, sweeping leaked volumes) must **print the exact resources and re-confirm the
+cluster name** before deleting; the initial cluster-name confirmation is generic
+and cannot list runtime resource IDs.
 
 ```bash
+# --- Step 1: GPU operator (Helm) ---
 helm uninstall gpu-operator \
   --kube-context "$CLUSTER_NAME" \
   --namespace gpu-operator \
   --wait --timeout 5m || true
 kubectl --context "$CLUSTER_NAME" delete namespace gpu-operator --ignore-not-found
 
+# Pin cluster identity up front — the VPC is gone after terraform destroy, and it
+# scopes the ELB match below. (Also confirms the kube-context resolves this cluster.)
+CLUSTER_VPC=$(aws eks describe-cluster --name "$CLUSTER_NAME" --region "$AWS_REGION" \
+  --query 'cluster.resourcesVpcConfig.vpcId' --output text)
+echo "Cluster $CLUSTER_NAME -> VPC $CLUSTER_VPC"
+
+# --- Step 2: Release cloud resources k8s created OUTSIDE Terraform state ---
+# 2a. Delete every type=LoadBalancer Service so the in-tree cloud controller
+#     tears down its Classic ELB, the k8s-elb-* security group, and ENIs.
+kubectl --context "$CLUSTER_NAME" get svc -A \
+  -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' \
+  | while IFS=/ read -r ns name; do
+      [ -n "$name" ] && kubectl --context "$CLUSTER_NAME" -n "$ns" \
+        delete svc "$name" --wait=true --timeout=5m || true
+    done
+
+# 2b. Wait up to ~4 min for the cloud controller to release this cluster's ELBs
+#     (and thus their k8s-elb-* SGs/ENIs). Match on owned tag AND cluster VPC.
+cluster_elbs() {
+  for elb in $(aws elb describe-load-balancers --region "$AWS_REGION" \
+                 --query "LoadBalancerDescriptions[?VPCId=='${CLUSTER_VPC}'].LoadBalancerName" \
+                 --output text); do
+    val=$(aws elb describe-tags --region "$AWS_REGION" --load-balancer-names "$elb" \
+            --query "TagDescriptions[0].Tags[?Key=='kubernetes.io/cluster/${CLUSTER_NAME}'].Value" \
+            --output text)
+    [ "$val" = "owned" ] && printf '%s\n' "$elb"
+  done
+}
+for i in $(seq 1 12); do
+  [ -z "$(cluster_elbs)" ] && break
+  echo "Waiting for cluster ELBs to release ($i/12): $(cluster_elbs | tr '\n' ' ')"
+  sleep 20
+done
+```
+
+If `cluster_elbs` still returns load balancers, the cloud controller stalled.
+**Print the remaining ELB names (all in VPC `$CLUSTER_VPC`) to the user and
+require exact cluster-name confirmation**, then force-delete only those so the
+orphaned `k8s-elb-*` SG stops blocking `DeleteVpc`:
+
+```bash
+for elb in $(cluster_elbs); do
+  echo "Force-deleting stalled ELB $elb (VPC $CLUSTER_VPC)"
+  aws elb delete-load-balancer --region "$AWS_REGION" --load-balancer-name "$elb"
+done
+```
+
+Then finish the pre-Terraform cleanup and destroy the stack:
+
+```bash
+# 2c. Delete all PVCs so the EBS CSI driver deletes their backing volumes
+#     before the cluster/nodes are torn down.
+kubectl --context "$CLUSTER_NAME" delete pvc --all -A --wait=true --timeout=5m || true
+
+# --- Step 3: AWS infra (Terraform) ---
 terraform -chdir=generated/terraform/aws/envs/"$CLUSTER_NAME" destroy -auto-approve
+```
+
+**Step 4 — backstop sweep of EBS volumes the CSI driver leaked** (not in TF
+state). Discover them first; the filters require this cluster's `owned` tag, the
+CSI-only `created-for` tag, and `status=available` (detached):
+
+```bash
+leaked_vols=$(aws ec2 describe-volumes --region "$AWS_REGION" \
+  --filters "Name=tag:kubernetes.io/cluster/${CLUSTER_NAME},Values=owned" \
+            "Name=tag-key,Values=kubernetes.io/created-for/pvc/name" \
+            "Name=status,Values=available" \
+  --query 'Volumes[].[VolumeId, Tags[?Key==`kubernetes.io/created-for/pvc/name`]|[0].Value]' \
+  --output text)
+printf 'Leaked volume (id -> source PVC): %s\n' "$leaked_vols"
+```
+
+**Print `leaked_vols` (each volume ID and its source PVC) to the user and require
+exact cluster-name confirmation.** Only then delete them:
+
+```bash
+echo "$leaked_vols" | awk 'NF {print $1}' | while read -r vol; do
+  echo "Deleting leaked EBS volume $vol"
+  aws ec2 delete-volume --region "$AWS_REGION" --volume-id "$vol"
+done
 ```
 
 ECR repositories created by Terraform will be destroyed with the stack. If they
 contain mirrored images you want to keep, export or retain them before destroy.
+
+> Note: Step 2 covers the in-tree cloud controller's **Classic ELBs** (what the
+> NVCF ingress creates). If a deployment fronts a Service with the AWS Load
+> Balancer Controller (NLB/ALB via `elbv2`), add an equivalent `aws elbv2`
+> wait/delete for load balancers tagged `elbv2.k8s.aws/cluster=<CLUSTER_NAME>`.
 
 ## Validation Checklist
 
@@ -184,3 +310,9 @@ contain mirrored images you want to keep, export or retain them before destroy.
 - [ ] GPU Operator stays outside Terraform state.
 - [ ] `ecr-mirror` remains optional and separate from infra apply.
 - [ ] Destroy requires exact cluster-name confirmation.
+- [ ] Destroy deletes LoadBalancer Services and PVCs, waits for the ELB and its
+      `k8s-elb-*` security group to clear before `terraform destroy`, and sweeps
+      leaked EBS volumes tagged `kubernetes.io/cluster/<cluster>=owned` after.
+- [ ] Out-of-Terraform deletes are scoped to this cluster (`owned` tag + cluster
+      VPC + CSI `created-for` tag + detached volumes) and the account-wide ELB
+      force-delete and volume sweep print the resources and re-confirm first.

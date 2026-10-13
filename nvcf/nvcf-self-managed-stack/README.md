@@ -101,8 +101,8 @@ This Helmfile deploys a complete NVCF infrastructure stack including:
 
 ### Optional Components
 
-- **State Metrics Service** (v1.0.1) - Prometheus metrics for NVCF state (disabled by default)
-- **NVCA Operator** (v1.14.0) - NVIDIA Container Analytics worker component, enabled only in `local` by default
+- **State Metrics Service** - Prometheus metrics for NVCF state (disabled by default)
+- **NVCA Operator** - NVIDIA Container Analytics worker component, enabled only in `local` by default
 - **Image Pull Secret Setup** - Automated registry authentication
 
 For pinned chart versions, see `helmfile.d/01-dependencies.yaml.gotmpl` (infrastructure) and `helmfile.d/02-core.yaml.gotmpl` (NVCF services).

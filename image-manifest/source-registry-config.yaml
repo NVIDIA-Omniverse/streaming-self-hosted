@@ -11,9 +11,18 @@
 # component_source_registries: optional map of manifest component/chart name -> registry
 #   prefix overriding source_registry for that item only (within the plugin's group).
 #
+# component_chart_names: optional map of helm-* manifest key -> the chart's name at its
+#   registry, for charts whose published name is not the manifest key. Only list the keys
+#   that differ.
+#
+# source_only_components: optional list of helm-* manifest keys for charts that ship as
+#   source in the upstream release tree with no registry artifact. Helm lint and ECR/ACR
+#   mirroring skip these.
+#
 # helm_repo_url: if present, helm charts for this group are pulled via HTTP from this Helm
 #   repo (https://helm.ngc.nvidia.com/...) instead of OCI. Chart names on HTTP repos drop
-#   the "helm-" prefix used in manifest.yaml keys.
+#   the "helm-" prefix used in manifest.yaml keys unless component_chart_names says
+#   otherwise.
 #
 # Version pins live in versions.yaml; manifest.yaml is generated per pipeline.
 
@@ -22,9 +31,6 @@ upstream_plugins:
   nvcf_self_managed_stack:
     gitlab_project_path: "ncp/nvcf/nvcf-self-managed-stack"
     source_registry: "nvcr.io/nvidia/nvcf"
-    component_source_registries:
-      helm-nvcf-llm-api-gateway: "nvcr.io/0833294136851237/selfhosted-ga"
-      helm-nvcf-llm-request-router: "nvcr.io/0833294136851237/selfhosted-ga"
 
   # NVCF compute-plane stack (NVCA operator)
   nvcf_compute_plane_stack:
@@ -44,7 +50,8 @@ upstream_plugins:
   # LLS plugin
   lls:
     gitlab_project_path: ""
-    source_registry: "nvcr.io/0833294136851237/selfhosted-ga"
+    source_registry: "nvcr.io/nvidia/omniverse"
+    helm_repo_url: "https://helm.ngc.nvidia.com/nvidia/omniverse"
 
   # USD Storage API plugins
   # Multiple upstream repos contribute images to this file.
@@ -69,14 +76,14 @@ upstream_plugins:
     gitlab_project_path: "omniverse/usd-storage/containers/simple-nginx"
     source_registry: "nvcr.io/nvidia/omniverse"
 
-  # USD Content Cache
-  ucc:
-    gitlab_project_path: "omniverse/caches/ucc"
+  # Omniverse Content Cache (OVCC), formerly USD Content Cache (UCC)
+  ovcc:
+    gitlab_project_path: "NVIDIA-Omniverse/ovcontentcache-internal"
     source_registry: "nvcr.io/nvidia/omniverse"
     helm_repo_url: "https://helm.ngc.nvidia.com/nvidia/omniverse"
 
-  # Derived Data Cache Service
-  ddcs:
-    gitlab_project_path: "omniverse/caches/ddcs"
+  # Omniverse Derived Cache (OVDC), formerly Derived Data Cache Service (DDCS)
+  ovdc:
+    gitlab_project_path: "NVIDIA-Omniverse/ovderivedcache-internal"
     source_registry: "nvcr.io/nvidia/omniverse"
     helm_repo_url: "https://helm.ngc.nvidia.com/nvidia/omniverse"

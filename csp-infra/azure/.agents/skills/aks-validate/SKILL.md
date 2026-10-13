@@ -43,6 +43,9 @@ Source from `streaming-env.sh` and any `.env.*` files written by upstream stages
 | `SKIP_CUDA` | Skip the CUDA smoke pod | `false` |
 | `SKIP_BLOB_PROBE` | Skip the Blob auth probe | `false` |
 | `TIMEOUT_MIN` | Per-check timeout cap | `5` |
+| `OVDC_REPLICAS` | Number of OVDC replicas the CPU compute pool must host | `0` |
+| `OVDC_MEMORY_REQUEST_GIB` | Rendered pod request rounded up to GiB; required when replicas are nonzero | _(unset)_ |
+| `OVDC_PLATFORM_RESERVE_GIB` | Additional allocatable-memory headroom per eligible compute node | `8` |
 
 ## Output
 
@@ -60,6 +63,7 @@ JSON shape:
     { "id": "vnet",        "status": "PASS", "detail": "VNet 10.10.0.0/16; subnets: snet-aks-nodes, snet-aks-api-server" },
     { "id": "aks",         "status": "PASS", "detail": "Succeeded; v1.30.2" },
     { "id": "nodes",       "status": "PASS", "detail": "system=1, gpu=1 (Standard_NV36ads_A10_v5, zone 1)" },
+    { "id": "platform-capacity", "status": "PASS", "detail": "OVDC replicas=1; eligible compute nodes=1; required allocatable memory per node=64 GiB" },
     { "id": "acr-pull",    "status": "PASS", "detail": "AcrPull granted to kubelet identity" },
     { "id": "blob-rbac",   "status": "PASS", "detail": "Storage Blob Data Contributor on grantee" },
     { "id": "gpu-op",      "status": "PASS", "detail": "9/9 pods Ready; chart v25.3.0" },
@@ -78,6 +82,7 @@ JSON shape:
 | `vnet` | VNet exists; node + API-server subnets present | FAIL |
 | `aks` | `provisioningState=Succeeded`; OIDC issuer URL non-empty; workload identity enabled | FAIL |
 | `nodes` | Expected pools present; `node-vm-size` matches `aks-nodes` inputs; GPU pool zone matches | FAIL |
+| `platform-capacity` | One distinct Ready, non-GPU `node-type=compute` node per OVDC replica with request plus reserve in allocatable memory | FAIL when requested; WARN when not requested |
 | `acr-pull` | `AcrPull` role assignment exists on the ACR scope to the kubelet identity | FAIL |
 | `blob-rbac` | `Storage Blob Data Contributor` on the storage account scope to the grantee | WARN if grantee/account unset |
 | `gpu-op` | GPU operator pods all Ready; chart version matches `GPU_OPERATOR_VERSION` if set | FAIL |
@@ -106,6 +111,8 @@ export KUBECONFIG="${KUBECONFIG:-/tmp/kubeconfig-${CLUSTER_NAME}}"
 SKIP_CUDA="${SKIP_CUDA:-false}"
 SKIP_BLOB_PROBE="${SKIP_BLOB_PROBE:-false}"
 TIMEOUT_MIN="${TIMEOUT_MIN:-5}"
+OVDC_REPLICAS="${OVDC_REPLICAS:-0}"
+OVDC_PLATFORM_RESERVE_GIB="${OVDC_PLATFORM_RESERVE_GIB:-8}"
 
 mkdir -p "$REPO_ROOT/generated"
 REPORT="$REPO_ROOT/generated/stage07-${CLUSTER_NAME}-validate-report.json"
@@ -124,7 +131,24 @@ for tool in az kubectl jq; do
   command -v "$tool" >/dev/null || { echo "MISSING TOOL: $tool"; exit 2; }
 done
 az account show >/dev/null 2>&1 || { echo "az not authenticated"; exit 2; }
-kubectl cluster-info >/dev/null 2>&1 || { echo "kubectl can't reach cluster $CLUSTER_NAME"; exit 2; }
+kubectl cluster-info >/dev/null 2>&1 || {
+  echo "kubectl can't reach cluster $CLUSTER_NAME — fetch a kubeconfig first:"
+  echo "  az aks get-credentials -g \$RESOURCE_GROUP -n $CLUSTER_NAME && kubelogin convert-kubeconfig -l azurecli"
+  exit 2; }
+# Azure-RBAC gate: aks-cluster runs with disable_local_accounts=true, so cluster-info can
+# succeed (API discovery) while every real call returns 403 Forbidden because the caller has
+# no cluster role assignment. Detect that here and fail with remediation, instead of letting
+# the gpu-op / gpu-resource / cuda-smoke checks below mis-report it as a broken GPU stack.
+RBAC_PROBE=$(kubectl get nodes 2>&1 >/dev/null) || true
+if printf '%s' "$RBAC_PROBE" | grep -qiE 'Forbidden|does not have access to the resource'; then
+  echo "Azure RBAC: this identity has NO cluster role assignment — kubectl is Forbidden, not broken."
+  echo "  aks-cluster grants this automatically for ADMIN_AAD_OBJECT_IDS (see tf-conventions R7)."
+  echo "  To grant an additional identity:"
+  echo "    CID=\$(az aks show -g \$RESOURCE_GROUP -n $CLUSTER_NAME --query id -o tsv)"
+  echo "    az role assignment create --assignee <obj-id> --role 'Azure Kubernetes Service Cluster User Role' --scope \"\$CID\""
+  echo "    az role assignment create --assignee <obj-id> --role 'Azure Kubernetes Service RBAC Cluster Admin' --scope \"\$CID\""
+  exit 2
+fi
 
 # --- check: rg ---
 LOC=$(az group show -n "$RESOURCE_GROUP" --query location -o tsv 2>/dev/null || echo "")
@@ -194,6 +218,40 @@ else
   record nodes "$NODE_STATUS" "$DETAIL"
 fi
 
+# --- check: platform-capacity ---
+NODES_JSON="$(kubectl get nodes -o json 2>/dev/null || echo '{"items":[]}')"
+if ! [[ "$OVDC_REPLICAS" =~ ^[0-9]+$ ]] || \
+   ! [[ "$OVDC_PLATFORM_RESERVE_GIB" =~ ^[0-9]+$ ]]; then
+  record platform-capacity FAIL "OVDC_REPLICAS and OVDC_PLATFORM_RESERVE_GIB must be non-negative integers"
+elif [[ "$OVDC_REPLICAS" -eq 0 ]]; then
+  record platform-capacity WARN "not requested (OVDC_REPLICAS=0)"
+elif ! [[ "${OVDC_MEMORY_REQUEST_GIB:-}" =~ ^[1-9][0-9]*$ ]]; then
+  record platform-capacity FAIL "OVDC_MEMORY_REQUEST_GIB must be a positive integer when OVDC_REPLICAS>0"
+else
+  REQUIRED_MIB=$(( (OVDC_MEMORY_REQUEST_GIB + OVDC_PLATFORM_RESERVE_GIB) * 1024 ))
+  ELIGIBLE_COMPUTE_NODES="$(echo "$NODES_JSON" | jq --argjson required "$REQUIRED_MIB" '
+    def mem_mib:
+      if test("Ki$") then (rtrimstr("Ki") | tonumber / 1024)
+      elif test("Mi$") then (rtrimstr("Mi") | tonumber)
+      elif test("Gi$") then (rtrimstr("Gi") | tonumber * 1024)
+      elif test("K$") then (rtrimstr("K") | tonumber * 1000 / 1048576)
+      elif test("M$") then (rtrimstr("M") | tonumber * 1000000 / 1048576)
+      elif test("G$") then (rtrimstr("G") | tonumber * 1000000000 / 1048576)
+      else (tonumber / 1048576) end;
+    [.items[] |
+      select(.metadata.labels["node-type"] == "compute") |
+      select(any(.status.conditions[]?; .type == "Ready" and .status == "True")) |
+      select(((.status.allocatable["nvidia.com/gpu"] // "0") | tonumber) == 0) |
+      select((.status.allocatable.memory | mem_mib) >= $required)
+    ] | length')"
+  REQUIRED_GIB=$((OVDC_MEMORY_REQUEST_GIB + OVDC_PLATFORM_RESERVE_GIB))
+  if [[ "$ELIGIBLE_COMPUTE_NODES" -ge "$OVDC_REPLICAS" ]]; then
+    record platform-capacity PASS "OVDC replicas=${OVDC_REPLICAS}; eligible compute nodes=${ELIGIBLE_COMPUTE_NODES}; required allocatable memory per node=${REQUIRED_GIB} GiB"
+  else
+    record platform-capacity FAIL "OVDC replicas=${OVDC_REPLICAS}; eligible compute nodes=${ELIGIBLE_COMPUTE_NODES}; need ${OVDC_REPLICAS} Ready non-GPU node-type=compute nodes with at least ${REQUIRED_GIB} GiB allocatable each"
+  fi
+fi
+
 # --- check: acr-pull ---
 if [[ -z "${ACR_NAME:-}" || -z "${KUBELET_IDENTITY_OBJECT_ID:-}" ]]; then
   record acr-pull WARN "ACR_NAME or KUBELET_IDENTITY_OBJECT_ID unset; skipping AcrPull check"
@@ -241,7 +299,13 @@ if [[ "$TOTAL" -eq 0 ]]; then
   record gpu-op FAIL "No pods found in namespace $GPU_OP_NS"
 else
   NOT_READY=$(echo "$PODS_JSON" | jq '[.items[] | select(.status.phase != "Succeeded") | select(((.status.conditions // []) | map(select(.type=="Ready" and .status=="True")) | length) == 0)] | length')
-  CHART_VER=$(kubectl get helmrelease -n "$GPU_OP_NS" gpu-operator -o jsonpath='{.spec.chart.spec.version}' 2>/dev/null || echo "")
+  # gpu-operator is installed via plain `helm install` (not Flux), so read the chart version
+  # from helm, not a Flux `helmrelease` CRD (which doesn't exist on this path). Best-effort.
+  CHART_VER=""
+  if command -v helm >/dev/null 2>&1; then
+    CHART_VER=$(helm list -n "$GPU_OP_NS" -o json 2>/dev/null \
+      | jq -r '(.[] | select(.name=="gpu-operator").chart) // ""' | sed -E 's/^gpu-operator-//')
+  fi
   DETAIL="${TOTAL} pods; ready-condition-missing=${NOT_READY}${CHART_VER:+; chart=$CHART_VER}"
   if [[ "$NOT_READY" -eq 0 ]]; then
     record gpu-op PASS "$DETAIL"
@@ -342,6 +406,8 @@ When run from `aks-bootstrap` deploy mode, the orchestrator reports the exit cod
 - [ ] Script uses `set -uo pipefail` (NOT `-e` — needs to keep collecting results past failures)
 - [ ] Preflight exits with code 2 (not 1) if a tool is missing or cluster is unreachable, so the orchestrator can distinguish "ran but failed checks" from "couldn't run"
 - [ ] Every check is wrapped to capture its own success/failure without aborting the script
+- [ ] Platform-capacity check uses Kubernetes allocatable memory and counts only
+      Ready, non-GPU `node-type=compute` nodes, one per OVDC replica
 - [ ] GPU operator check inspects pod Ready conditions, not just pod phase
 - [ ] CUDA smoke pod has the GPU pool toleration
 - [ ] CUDA smoke waits for `phase=Succeeded` directly so short-lived `nvidia-smi` pods do not false-fail before becoming Ready

@@ -3,6 +3,9 @@ name: caches-ovcontentcache-deploy
 description: Deploy NVIDIA Omniverse Content Cache (OVCC) alongside a MEGA simulation stack. Covers evaluation, sizing (NGINX queue-depth model), configuration for GCS/S3/Azure backends, Helm install from NGC (chart ovcontentcache v4.0.4), TLS setup, in-place upgrade from UCC 3.0.3, and wiring to write-render-worker and storage-service. MEGA does not use Nucleus; always disable it. Use when deploying OVCC for MEGA — whether exploring fit, sizing replicas, or ready to install.
 ---
 
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 AND Apache-2.0 -->
+
 # OVCC Deployment Advisor
 
 **Naming.** The product is Omniverse Content Cache. This directory is named
@@ -17,17 +20,24 @@ description: Deploy NVIDIA Omniverse Content Cache (OVCC) alongside a MEGA simul
 | Reference files | `references/ovcc-*.yaml` |
 | Env vars | `OVCC_NAMESPACE`, `OVCC_CHART_VERSION`, `OVCC_IMAGE_REPOSITORY` |
 | **NGC chart path** | `ovcontentcache` (catalog name — this is the only place `ovcontentcache` appears in commands) |
-| **Container image repo** | `usd-content-cache` (unchanged — 4.0.x is a chart rename only) |
+| **Container image repo** | `usd-content-cache`, image tag `3.0.2` |
 
 Do NOT rename the Helm release, namespace, or image to `ovcontentcache`. The
 chart `ovcontentcache` renders Kubernetes names under `nameOverride` (default
 `ovcc`); installing with release `ovcc` collapses `<release>-<name>` to `ovcc`,
 giving endpoint `ovcc.ovcc.svc.cluster.local:14128`.
 
-**Pin chart version `v4.0.4`.** The `ovcontentcache` chart name does not exist
+**Pin chart `4.0.4` and container image `3.0.2`.** The `ovcontentcache` chart name does not exist
 before `v4.0.3` (earlier tags are `ovcc`/`ov-cc`); `v4.0.4` is the first stable
-post-rename chart. The runtime container is pinned by the chart `appVersion`
-(`3.0.1`) — do NOT set `image.tag`.
+post-rename chart. Its default container version is still `3.0.1`, so the
+bundled platform values explicitly set `image.tag: "3.0.2"` as recommended by
+the [deployment guide](https://docs.omniverse.nvidia.com/ovcaches/ovcontentcache/latest/deploy.html#updating-the-container-image).
+Keep that tag in the maintained values file passed as `OVCC_VALUES_FILE` for
+installs and upgrades. The guide describes `3.0.2` as a security patch with no
+configuration or behavior changes. Record any release-manifest discrepancy;
+this skill's default deployment uses `3.0.2`. If the user explicitly requests
+a different manifest-pinned image, record that exception in the values file
+and review output. Render and inspect the resulting image reference.
 
 **Storage-service must be wired for OVCC before this skill is considered
 complete.** OVCC only works when storage-service returns presigned URL redirects
@@ -48,35 +58,16 @@ If any value is missing, stop and add it to the simulation values artifact
 before deploying OVCC. Do not keep these keys in a one-off values layer that may
 be omitted from later `helm upgrade` commands.
 
-**OVCC uses a different NGC org from MEGA.** The OVCC Helm chart and
-container image are in the same NGC org as the SRTX charts, not the
-MEGA org. The pull secret needs an NGC API key with access to that org.
-
-- **Standalone OVCC** (no MEGA): `NGC_API_KEY` works — it typically has
-  access to the OVCC charts and images.
-- **OVCC alongside MEGA**: MEGA environments use separate keys for
-  MEGA and SRTX charts (`NGC_MEGA_API_KEY` and `NGC_SRTX_API_KEY`).
-  `NGC_SRTX_API_KEY` also grants access to OVCC charts and images, so
-  use it. `NGC_MEGA_API_KEY` does not have access and will fail with
-  `403 Forbidden` / `ImagePullBackOff`. `NGC_API_KEY` may also be set
-  to the MEGA-scoped key in these environments — verify it has access
-  before using it.
-
-**Image org must match the Helm repo org; the image repo stays
-`usd-content-cache`.** OVCC 4.0.x is a chart rename only — the runtime image is
-still `usd-content-cache:3.0.1`. The container image lives in the same NGC org
-as the Helm chart. When using the staging repo (`storage-caches-stg`), the image
-is at `nvcr.io/<staging-org>/storage-caches-stg/usd-content-cache`; when using
-the production repo (`nvidia/omniverse`), it is at
-`nvcr.io/nvidia/omniverse/usd-content-cache`. Resolve `OVCC_IMAGE_REPOSITORY`
-from `CACHES_HELM_REPO` during the conversation phase and inject the literal into
-the generated script — do not hardcode the image org and do not parse the repo
-URL at runtime. Note the chart **path** is `ovcontentcache` but the image
-**repository** is `usd-content-cache`; they differ on purpose.
+**Public artifacts.** Use `https://helm.ngc.nvidia.com/nvidia/omniverse` for
+charts and `nvcr.io/nvidia/omniverse/usd-content-cache` for the image. Use an
+NGC key with access to those artifacts; verify its scope rather than assuming
+a MEGA/SRTX key grants access. The chart path is `ovcontentcache`, while the
+image repository remains `usd-content-cache`. For a customer mirror, resolve
+chart and image paths independently and set their overrides explicitly.
 
 You are an OVCC deployment advisor. When a user mentions OVCC (Omniverse Content Cache), guide them through evaluation and deployment rather than waiting for a complete set of inputs. Ask questions, interpret answers using the reference data below, and generate a deployment script only when you have enough context.
 
-The cluster should already exist with the node pools, labels, taints, and StorageClasses referenced by this skill. All performance data comes from testing with the kion_warehouse scene (1,659 USD files, 3.1 GB, HTTP/2) and is carried forward from UCC 3.0 — the OVCC 4.0.x runtime is byte-identical (`usd-content-cache:3.0.1`), so the sizing model is unchanged. Consult `references/cloud-knowledge.md` for cloud-specific operational details.
+The cluster should already exist with the node pools, labels, taints, and StorageClasses referenced by this skill. The performance data comes from testing the kion_warehouse scene (1,659 USD files, 3.1 GB, HTTP/2) with UCC 3.0. Use it as a sizing starting point and validate the selected OVCC image and workload; chart version alone does not establish identical runtime performance. Consult `references/cloud-knowledge.md` for cloud-specific operational details.
 
 ## Reference Files
 
@@ -140,7 +131,7 @@ Based on the user's answers, determine which backends to enable. Communicate wha
 
 - OVCC is a pass-through proxy. Clients send their own credentials (presigned URLs for S3/GCS, SAS tokens for Azure, JWTs for Nucleus). OVCC does not store storage credentials.
 - At chart v4.0.4 the `azure`, `s3`, `gcs`, and `nucleus` backends are all enabled (`include: true`) by default. Explicitly disable every backend you are not using to avoid an unused listener and to avoid the OpenResty startup failure `"proxy_cache" zone "<name>" is unknown` (a cache zone is declared but its backend/volume is absent). The reference values files already disable the unused backends for their permutation.
-- Each enabled backend gets its own PVC for cache isolation. It can be
+- In PVC mode, each enabled backend gets its own PVC for cache isolation. It can be
   configured to use a single PVC.
 
 For non-TLS deployments (common on AWS BYOC where Sensor RTX does not support TLS to OVCC yet), add `proxyPass` and `proxyAuthPass` overrides for S3 and Azure backends so OVCC still uses HTTPS upstream. See `references/cloud-knowledge.md` (AWS/EKS section).
@@ -161,21 +152,21 @@ Target `queue_depth ≤ 14`. Walk the user through the math:
 - Recommend the replica count that brings queue depth to ~14 or below.
 - Warn if over-provisioning: at 100 workers on c4-highcpu-48, R=4 showed 3,415 cache misses from fragmentation across replicas vs R=3 with near-zero misses.
 
-Refer to `references/sizing-detail.md` for the tested-configurations tables that back this formula. The data was collected on UCC 3.0 and applies unchanged to OVCC 4.0.x (same runtime).
+Refer to `references/sizing-detail.md` for the tested-configurations tables that back this formula. The data was collected on UCC 3.0; validate the estimate for the selected OVCC image and workload.
 
 ### Phase 5 — Generate the script
 
 Collect remaining inputs:
-- Cluster name and zone
+- Cluster name and cloud zone/region (unused on-prem)
 - `GCP_PROJECT_ID` (GKE only — the cluster's project; read from the GKE kubectl context `gke_<project>_<zone>_<cluster>` or `gcloud config get-value project`, then inject as a literal)
-- `NGC_API_KEY` (from environment — must have access to OVCC charts; in MEGA environments use `NGC_SRTX_API_KEY`, NOT `NGC_MEGA_API_KEY`)
-- `CACHES_HELM_REPO` and `CACHES_HELM_REPO_NAME` (from `helm repo list` or AGENTS.md defaults)
-- `OVCC_IMAGE_REPOSITORY` (resolve at generation time: strip `https://helm.ngc.nvidia.com/` from `CACHES_HELM_REPO`, append `/usd-content-cache` — NOT `/ovcontentcache`)
+- `NGC_API_KEY` (from environment — verify access to the selected OVCC charts and images)
+- `CACHES_HELM_REPO` and `CACHES_HELM_REPO_NAME` (use defaults in `references/script-template.md`; select a customer mirror explicitly, optionally using `helm repo list`)
+- `OVCC_IMAGE_REPOSITORY` (default `nvidia/omniverse/usd-content-cache`; resolve independently of the chart URL for a customer mirror)
 - `OVCC_CHART_VERSION` (default `4.0.4`)
 - `GCS_HMAC_ACCESS_KEY_ID` and `GCS_HMAC_SECRET_ACCESS_KEY` (if GCS backend; provision HMAC keys from your GCS project)
 
 **Use the reference values files** in `references/` as the base for the
-Helm install. These contain tested configurations for node placement,
+Helm install. These contain example configurations for node placement,
 tolerations, anti-affinity, backend toggles, PVC sizing, and monitoring:
 
 - `references/ovcc-gcp-g4-s3-values.yaml` — S3-only on GKE GPU nodes
@@ -187,10 +178,8 @@ of assembling `--set` flags manually. Only use `--set` for values that
 differ from the reference (e.g. `replicaCount`, `persistence.storageClassName`,
 `image.registry`, `image.repository`). **The reference values files do not
 set `image.repository`** — you must always pass it via `--set` using the
-`OVCC_IMAGE_REPOSITORY` literal you resolved from `CACHES_HELM_REPO` at
-generation time. Without this override, the chart defaults to the
-production image path, which will 404 when installing from the staging
-chart.
+selected `OVCC_IMAGE_REPOSITORY`. The default is the public
+`nvidia/omniverse/usd-content-cache`; override it explicitly for a customer mirror.
 
 Generate `ovcc-deploy.sh` using the full script template in `references/script-template.md`. The script goes in `generated/` for human review — do NOT execute it.
 
@@ -260,12 +249,27 @@ OVCC routes requests by Host header: cloud backends (S3, Azure, GCS) share
 port 14128, Nucleus uses port 14129. Each backend is toggled via
 `nginx.backends.<name>.include`.
 
-The reference values files in `references/` already encode each tested
-backend permutation, including the `nginx.backends.*.include` toggles,
+The reference values files in `references/` encode example
+backend configurations, including the `nginx.backends.*.include` toggles,
 the matching `persistence.volumes[]`, and `nginx.proxyCache.paths[]`:
 
 - `references/ovcc-gcp-g4-s3-values.yaml` — S3 only
 - `references/ovcc-gcp-g4-s3-gcs-values.yaml` — S3 + GCS
+- [EKS S3 values](references/ovcc-eks-s3-values.yaml) — existing `gp3` class;
+  2 TiB per backend, no assumed node-pool label, TLS enabled. Validate provisioned
+  IOPS/throughput as well as capacity; the GKE Hyperdisk Extreme 128 GiB example
+  is not the EKS sizing baseline.
+- [On-prem S3 values](references/ovcc-onprem-s3-values.yaml) — uses
+  `persistence.mode: ephemeral` (`emptyDir`). Select nodes whose kubelet storage
+  is backed by local SSD and size the cache to available node capacity. Cache
+  data is lost on pod recreation. For PVC storage, set `persistence.mode: pvc`
+  in the maintained values file and supply the site's `STORAGE_CLASS`. The
+  [EKS example](references/ovcc-eks-s3-values.yaml) is a reference only, with no
+  requirement to use EBS, AWS node labels or the same storage backend.
+
+EKS/on-prem examples expose metrics without installing a monitoring CRD.
+Enable `metrics.prometheus.serviceMonitor.enabled` in the maintained values only
+when a compatible Prometheus Operator and its ServiceMonitor CRD are installed.
 
 For a combination not covered (Azure-only, multi-backend with Nucleus,
 etc.), copy the closest reference into `references/`, adjust the four
@@ -278,7 +282,7 @@ Per-backend semantics the reference files do not capture:
 - **S3** uses presigned URLs. Clients include `X-Amz-*` query parameters. No OVCC-side credentials secret needed.
 - **Azure Blob** uses SAS tokens. Clients include `sv`, `sp`, `sr`, `se`, `sig` query parameters. No OVCC-side credentials secret needed.
 - **Nucleus** runs on port 14129 and can coexist with any cloud backend. Add it as another entry in `persistence.volumes[]` and `nginx.proxyCache.paths[]`. **MEGA does not use Nucleus** — always set `nginx.backends.nucleus.include: false`. For non-MEGA deployments only: set `nginx.backends.nucleus.bridgeResolver` when using Unbound DNS (e.g. `unbound-dns-addon.ovcc-unbound.svc.cluster.local:53`); HTTP/2 is not supported on the Nucleus port; optional JWT via `Omni-Tenant-Token` header is forwarded but not validated.
-- **Multi-backend:** each backend gets its own PVC and cache zone. Cache is isolated per backend.
+- **Multi-backend:** each backend gets its own cache volume (PVC or `emptyDir`) and cache zone. Cache is isolated per backend.
 
 ## Inputs
 
@@ -286,16 +290,17 @@ Gather these during the conversation. Do not present this as a form to the user.
 
 | Variable | When needed | Source |
 |---|---|---|
-| `CLOUD_PROVIDER` | Always | Ask the user (`gke`, `eks`, or `aks`). Drives StorageClass selection and monitoring config |
+| `CLOUD_PROVIDER` | Always | Use the selected platform (`gke`, `eks`, `aks`, or `onprem`). Drives StorageClass selection and monitoring config |
 | `CLUSTER_NAME` | Always | Ask the user |
-| `ZONE` | Always (GKE: zone, EKS: region, AKS: location) | Ask the user |
-| `STORAGE_CLASS` | When overriding the values file's pinned class | Cluster-specific name passed via `--set persistence.storageClassName`. The g4 reference values pin `hyperdisk-extreme`; only set `STORAGE_CLASS` when you need to override (e.g., n2 cluster, EKS, AKS) — pick per cloud + machine family from `references/cloud-knowledge.md` > Cross-Cloud Quick Reference > Storage class per cloud. |
-| `NGC_API_KEY` | Always | Environment variable with access to OVCC charts and images. Must be `export`ed for Python subprocesses. In MEGA environments use `NGC_SRTX_API_KEY` (covers OVCC). Do NOT use `NGC_MEGA_API_KEY` (different org, no access to OVCC). |
-| `CACHES_HELM_REPO` | Always | NGC Helm repo URL for cache charts. Staging: `https://helm.ngc.nvidia.com/<org>/storage-caches-stg`. Production: `https://helm.ngc.nvidia.com/nvidia/omniverse`. From `helm repo list` or AGENTS.md defaults. |
-| `CACHES_HELM_REPO_NAME` | Always | Local Helm repo alias (e.g. `storage-caches-stg` or `nvidia-omniverse`). From `helm repo list`. |
-| `OVCC_CHART_VERSION` | Always (default: `4.0.4`) | Chart `ovcontentcache` version. Do NOT pin below `4.0.3` — the `ovcontentcache` chart name does not exist before then. |
+| `ZONE` | Cloud platforms only (GKE: zone, EKS: region, AKS: location) | Discover from cluster context; unused on-prem |
+| `STORAGE_CLASS` | PVC mode only: required on-prem or with custom EKS values; optional override elsewhere | Cluster-specific name passed via `--set persistence.storageClassName`. Unused with `persistence.mode: ephemeral`. The g4 reference values pin `hyperdisk-extreme`; pick overrides per cloud + machine family from `references/cloud-knowledge.md` > Cross-Cloud Quick Reference > Storage class per cloud. |
+| `NGC_API_KEY` | Always | Exported environment variable with verified access to the public OVCC charts and images. |
+| `CACHES_HELM_REPO` | Always | Public Helm repo: `https://helm.ngc.nvidia.com/nvidia/omniverse`; override for a customer mirror. |
+| `CACHES_HELM_REPO_NAME` | Always | Alias registered in temporary Helm configuration for each chart operation (default `nvidia-omniverse`). Existing user entries are preserved. |
+| `CACHES_HELM_USERNAME`, `CACHES_HELM_PASSWORD` | Authenticated customer mirrors only | Scoped mirror credentials. The public NGC repository uses `NGC_API_KEY`; that key is not sent to customer mirrors. |
+| `OVCC_CHART_VERSION` | Always (default: `4.0.4`) | Chart `ovcontentcache` version from repo `image-manifest/manifest.yaml` key `ovcc.helm-ovcontentcache`. |
 | `OVCC_IMAGE_REGISTRY` | Always (default: `nvcr.io`) | Registry hostname only. Do NOT include org path. |
-| `OVCC_IMAGE_REPOSITORY` | Always (resolved at generation time from `CACHES_HELM_REPO`) | **Resolved by the agent, not by the script.** Strip `https://helm.ngc.nvidia.com/` from `CACHES_HELM_REPO`, append `/usd-content-cache` (the image repo is unchanged by the rename), and inject the literal into the script. E.g. staging → `<org>/storage-caches-stg/usd-content-cache`, production → `nvidia/omniverse/usd-content-cache`. |
+| `OVCC_IMAGE_REPOSITORY` | Always | Default `nvidia/omniverse/usd-content-cache`; set the actual image path independently when using a customer mirror. |
 | `REPLICA_COUNT` | Always | Computed in Phase 4 |
 | `GCS_HMAC_ACCESS_KEY_ID` | GCS backend | Environment variable |
 | `GCS_HMAC_SECRET_ACCESS_KEY` | GCS backend | Environment variable |
@@ -307,12 +312,12 @@ Gather these during the conversation. Do not present this as a form to the user.
 
 Generate the deployment script following the full template in `references/script-template.md`. The script must:
 
-1. **Preflight** — validate `CLUSTER_NAME`, `ZONE`, `NGC_API_KEY`, `GCP_PROJECT_ID` (GKE), `CACHES_HELM_REPO`, `CACHES_HELM_REPO_NAME`, and `OVCC_IMAGE_REPOSITORY` (all resolved by the agent and injected as literals); export `NGC_API_KEY`; check HMAC vars only when GCS is enabled; verify `kubectl cluster-info`.
-2. **StorageClass check** — only override the values file's pinned class when `STORAGE_CLASS` is set; verify the class exists.
+1. **Preflight** — validate `CLUSTER_NAME`, `ZONE` (cloud platforms only), `NGC_API_KEY`, `GCP_PROJECT_ID` (GKE), `CACHES_HELM_REPO`, `CACHES_HELM_REPO_NAME`, and `OVCC_IMAGE_REPOSITORY` (use public defaults or explicit customer mirrors); export `NGC_API_KEY`; check HMAC vars only when GCS is enabled; verify `kubectl cluster-info`.
+2. **Storage mode and StorageClass check** — read `persistence.mode` from the maintained values file (requires Python with PyYAML). For PVC mode, require a site-selected class on-prem and check the EKS default or explicit override exists. For ephemeral mode, skip StorageClass checks and overrides; verify node-local SSD backing, capacity, and placement before deployment. Do not create cloud storage on-prem.
 3. **Namespace + secrets** — create namespace; create `ngc-secret` via a Python heredoc (no `$` reaches the shell); create self-signed `ovcc-tls`; create `gcs-hmac-credentials` only when GCS is enabled.
-4. **Helm install** — install chart `${CACHES_HELM_REPO_NAME}/ovcontentcache` with `--version ${OVCC_CHART_VERSION}`; pass `-f "${OVCC_VALUES_FILE}"`; reserve `--set` for `replicaCount`, `image.registry`, `image.repository`, `image.tag`, `image.pullSecrets[0].name`, `tls.secretName`, and optional `persistence.storageClassName`. Do not set `image.tag` (chart `appVersion` pins it).
-5. **Validation** — pod status, PVC status, log tail per replica, port-forward healthz + cache_metrics. The container is distroless; no `kubectl exec`.
-6. **Scale (`--scale N`)** — `helm upgrade --reuse-values` with new `replicaCount`.
+4. **Helm install** — install chart `${CACHES_HELM_REPO_NAME}/ovcontentcache` with `--version ${OVCC_CHART_VERSION}`; pass `-f "${OVCC_VALUES_FILE}"` containing `image.tag: "3.0.2"`; reserve `--set` for `replicaCount`, `image.registry`, `image.repository`, `image.pullSecrets[0].name`, `tls.secretName`, and optional `persistence.storageClassName`.
+5. **Validation** — pod image is `usd-content-cache:3.0.2` in the selected registry/org, pod status, bound PVCs in PVC mode or cache `emptyDir` volumes in ephemeral mode, log tail per replica, port-forward healthz + cache_metrics. The container is distroless; no `kubectl exec`.
+6. **Scale (`--scale N`)** — `helm upgrade --reuse-values -f "${OVCC_VALUES_FILE}"` with new `replicaCount`, retaining the explicit image tag.
 7. **Teardown (`--teardown`)** — uninstall release; delete secrets; delete PVCs; delete namespace.
 
 Use the exact code blocks in `references/script-template.md`; do not paraphrase or omit safety checks.
@@ -322,9 +327,9 @@ Use the exact code blocks in `references/script-template.md`; do not paraphrase 
 After generating the script, verify:
 
 - [ ] Chart path is `ovcontentcache` and `--version` is `4.0.4` (or a later `4.0.x`/`4.x`); image repository resolves to `usd-content-cache`, not `ovcontentcache`
-- [ ] If `STORAGE_CLASS` is set (override of the values file's pinned class), it matches the row for the target cloud + machine family in `references/cloud-knowledge.md` > Cross-Cloud Quick Reference > Storage class per cloud and is verified to exist before install
-- [ ] `image.repository` is set via `--set` from the agent-resolved `OVCC_IMAGE_REPOSITORY` literal — chart default points to production; staging images will 404 without this override
-- [ ] `image.tag` is NOT set (the chart `appVersion` pins the runtime)
+- [ ] In PVC mode, any `STORAGE_CLASS` override matches the target cloud + machine family in `references/cloud-knowledge.md` > Cross-Cloud Quick Reference > Storage class per cloud and is verified to exist before install; ephemeral mode skips this check and requires verified node-local backing and capacity
+- [ ] `image.repository` is set via `--set` from the agent-resolved `OVCC_IMAGE_REPOSITORY` literal — defaults to the public `nvidia/omniverse/usd-content-cache` path
+- [ ] The maintained values file sets `image.tag: "3.0.2"`; install and upgrade commands pass it with `-f`, and the rendered pod image uses that tag (or a documented user-selected exception)
 - [ ] Only selected backends have `include=true`; others `include=false` (including `gcs`, which defaults on); Nucleus explicitly disabled if unused
 - [ ] Each enabled backend has its own cache volume (`persistence.volumes[]`) and cache path (`nginx.proxyCache.paths[]`); volume indices sequential
 - [ ] NGC pull secret uses literal `$oauthtoken` as username

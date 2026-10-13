@@ -56,6 +56,28 @@ New integration test configuration options:
 - `skipConnectivityChecks` — bypass preflight health checks
 - `serviceIdentity.clientCredentials.*` — explicit OAuth2 client credentials block for authenticated deployments
 
+`storage-service` 1.2.2 notes (relative to the v1.0.0 GA 1.0.2 chart):
+
+The chart/image moved 1.0.2 -> **1.2.2**, spanning the 1.2.0, 1.2.1 and 1.2.2 releases. Operator-visible changes:
+
+**New capabilities**
+- **PostgreSQL metadata backend** (`config.metadata`) alongside the existing CosmosDB option, with advanced query limits and a faster continuation-token format. Migrations run from an init container before replicas serve; the token provisioner runs as a native sidecar, so this path needs **Kubernetes 1.29+**.
+- **Shared Redis/Valkey L2 cache tier** (`config.redis.address`) for the Metadata API and, separately, for the manifest cache (`config.manifest.*`).
+- **Manifest layer** (`config.manifest.enabled`) with its own optional L2 tier and cache capacity limit.
+- **Workload identity** — AKS Workload Identity and EKS IRSA credentials, plus injected AWS/Azure client credentials and an access-token-file service identity provider.
+- **Synthetic directory events** (`config.syntheticDirEvents`) derived from file events, with its own retry policy.
+- **Standardized `observability` block** — `observability.metrics.enabled` / `tracing.enabled` with `endpoint.grpc`, `metrics.exportIntervalMs` (default 15000), and `observability.logging.structured.enabled` for JSON logs. This supersedes the older `service.metrics.enabled` switch, which it takes precedence over.
+- **Probe configuration** (`probes.liveness` / `probes.readiness`, each `periodSeconds` + `failureThreshold`) and a dedicated gRPC probe service.
+- Batch metadata operations, `UpdateMetadataBatch` (v1alpha), and multiple storage event subscribers of the same kind.
+
+**Behaviour changes to watch when upgrading**
+- `enable_permissions` / `enablePermissions` was **renamed** to `permissions_enabled` / `permissionsEnabled`. Values files carrying the old name silently lose the setting.
+- `allowUnconfiguredEndpoints` (S3 and Azure Blob) — when `false`, the router rejects requests to unconfigured endpoints instead of forwarding them.
+- `Copy` and `Move` **across different backends** now return `UNIMPLEMENTED` (REST 501) rather than `INVALID_ARGUMENT`.
+- Discovery v2alpha now advertises the REST version mount base (`/v1alpha`) instead of embedding the resource name; clients combine it with the endpoint name and the group's OpenAPI paths.
+- Deprecated and unused chart properties were removed — the chart ships a migration guide. Default HTTPProxy route timeouts increased, with a separate timeout policy for streamed routes.
+- Responses served from the workspace manifest cache are now authorized; previously they bypassed permission checks (OMPE-105165).
+
 ---
 
 ## 1.0.0-beta Initial Release

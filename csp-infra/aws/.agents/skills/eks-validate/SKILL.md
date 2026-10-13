@@ -29,6 +29,7 @@ The report shape intentionally matches the Azure `aks-validate` style:
     { "id": "vpc",          "status": "PASS", "detail": "VPC vpc-abc 10.10.0.0/16; subnets: subnet-a, subnet-b, subnet-c" },
     { "id": "eks",          "status": "PASS", "detail": "ACTIVE; v1.30; OIDC enabled" },
     { "id": "nodes",        "status": "PASS", "detail": "system=1, compute=1, gpu=1 (g6.12xlarge, us-west-2a)" },
+    { "id": "platform-capacity", "status": "PASS", "detail": "OVDC replicas=1; eligible compute nodes=1; required allocatable memory per node=64 GiB" },
     { "id": "ecr-pull",     "status": "PASS", "detail": "ECR read allowed for node role(s)" },
     { "id": "s3-rbac",      "status": "WARN", "detail": "Skipped (no S3_BUCKET_NAME)" },
     { "id": "gpu-op",       "status": "PASS", "detail": "9/9 pods Ready; chart v25.3.1" },
@@ -58,6 +59,9 @@ Optional:
 | `CUDA_IMAGE` | `nvidia/cuda:12.4.0-base-ubuntu22.04` | Image for smoke test. |
 | `SKIP_CUDA` | `false` | Skip CUDA smoke with WARN. |
 | `ALLOW_GPU_ZERO` | `false` | Treat no GPU nodes/resources as WARN instead of FAIL. |
+| `OVDC_REPLICAS` | `0` | Number of OVDC replicas the CPU compute pool must host. |
+| `OVDC_MEMORY_REQUEST_GIB` | unset | Required when `OVDC_REPLICAS > 0`; rendered pod request rounded up to GiB. |
+| `OVDC_PLATFORM_RESERVE_GIB` | `8` | Additional allocatable-memory headroom required on every eligible compute node. |
 | `S3_BUCKET_NAME` | unset | Enables optional S3 RBAC check. |
 | `S3_PROBE_NAMESPACE` | `default` | Namespace for optional in-cluster S3 probe. |
 | `S3_PROBE_SERVICE_ACCOUNT` | unset | ServiceAccount expected to have S3 access, usually via IRSA/EKS Pod Identity. |
@@ -79,6 +83,7 @@ Required tools:
 | `vnet` | `vpc` validates EKS VPC, CIDR, and attached subnets. |
 | `aks` | `eks` validates EKS `ACTIVE`, Kubernetes version, and OIDC issuer. |
 | `nodes` | `nodes` validates system/compute/GPU node labels plus GPU instance type/zone detail. |
+| `platform-capacity` | `platform-capacity` validates Ready, non-GPU compute nodes for OVDC replicas and allocatable memory. |
 | `acr-pull` | `ecr-pull` validates ECR read access for EKS node role(s). |
 | `blob-rbac` | `s3-rbac` optionally validates S3 permissions when `S3_BUCKET_NAME` is set. |
 | `gpu-op` | `gpu-op` validates GPU Operator pod readiness and chart version when discoverable. |
@@ -101,6 +106,8 @@ ECR_REPOSITORY_PREFIX="${ECR_REPOSITORY_PREFIX:-$CLUSTER_NAME}"
 CUDA_IMAGE="${CUDA_IMAGE:-nvidia/cuda:12.4.0-base-ubuntu22.04}"
 SKIP_CUDA="${SKIP_CUDA:-false}"
 ALLOW_GPU_ZERO="${ALLOW_GPU_ZERO:-false}"
+OVDC_REPLICAS="${OVDC_REPLICAS:-0}"
+OVDC_PLATFORM_RESERVE_GIB="${OVDC_PLATFORM_RESERVE_GIB:-8}"
 S3_PROBE_NAMESPACE="${S3_PROBE_NAMESPACE:-default}"
 S3_PROBE_IMAGE="${S3_PROBE_IMAGE:-amazon/aws-cli:2.15.0}"
 SKIP_S3_PROBE="${SKIP_S3_PROBE:-false}"
@@ -219,6 +226,41 @@ elif [[ "$GPU_COUNT" -eq 0 ]]; then
   record nodes FAIL "$NODE_DETAIL; missing node-type=gpu"
 else
   record nodes PASS "$NODE_DETAIL"
+fi
+
+# --- check: platform-capacity ---
+# OVDC scheduling uses hard anti-affinity, so each replica needs one distinct
+# Ready CPU compute node. Kubernetes allocatable memory is authoritative.
+if ! [[ "$OVDC_REPLICAS" =~ ^[0-9]+$ ]] || \
+   ! [[ "$OVDC_PLATFORM_RESERVE_GIB" =~ ^[0-9]+$ ]]; then
+  record platform-capacity FAIL "OVDC_REPLICAS and OVDC_PLATFORM_RESERVE_GIB must be non-negative integers"
+elif [[ "$OVDC_REPLICAS" -eq 0 ]]; then
+  record platform-capacity WARN "not requested (OVDC_REPLICAS=0)"
+elif ! [[ "${OVDC_MEMORY_REQUEST_GIB:-}" =~ ^[1-9][0-9]*$ ]]; then
+  record platform-capacity FAIL "OVDC_MEMORY_REQUEST_GIB must be a positive integer when OVDC_REPLICAS>0"
+else
+  REQUIRED_MIB=$(( (OVDC_MEMORY_REQUEST_GIB + OVDC_PLATFORM_RESERVE_GIB) * 1024 ))
+  ELIGIBLE_COMPUTE_NODES="$(echo "$NODES_JSON" | jq --argjson required "$REQUIRED_MIB" '
+    def mem_mib:
+      if test("Ki$") then (rtrimstr("Ki") | tonumber / 1024)
+      elif test("Mi$") then (rtrimstr("Mi") | tonumber)
+      elif test("Gi$") then (rtrimstr("Gi") | tonumber * 1024)
+      elif test("K$") then (rtrimstr("K") | tonumber * 1000 / 1048576)
+      elif test("M$") then (rtrimstr("M") | tonumber * 1000000 / 1048576)
+      elif test("G$") then (rtrimstr("G") | tonumber * 1000000000 / 1048576)
+      else (tonumber / 1048576) end;
+    [.items[] |
+      select(.metadata.labels["node-type"] == "compute") |
+      select(any(.status.conditions[]?; .type == "Ready" and .status == "True")) |
+      select(((.status.allocatable["nvidia.com/gpu"] // "0") | tonumber) == 0) |
+      select((.status.allocatable.memory | mem_mib) >= $required)
+    ] | length')"
+  REQUIRED_GIB=$((OVDC_MEMORY_REQUEST_GIB + OVDC_PLATFORM_RESERVE_GIB))
+  if [[ "$ELIGIBLE_COMPUTE_NODES" -ge "$OVDC_REPLICAS" ]]; then
+    record platform-capacity PASS "OVDC replicas=${OVDC_REPLICAS}; eligible compute nodes=${ELIGIBLE_COMPUTE_NODES}; required allocatable memory per node=${REQUIRED_GIB} GiB"
+  else
+    record platform-capacity FAIL "OVDC replicas=${OVDC_REPLICAS}; eligible compute nodes=${ELIGIBLE_COMPUTE_NODES}; need ${OVDC_REPLICAS} Ready non-GPU node-type=compute nodes with at least ${REQUIRED_GIB} GiB allocatable each"
+  fi
 fi
 
 # --- check: ecr-pull ---
@@ -412,6 +454,9 @@ echo "Report: $REPORT_FILE"
 - [ ] VPC check reports the EKS VPC CIDR and attached subnet names/CIDRs.
 - [ ] EKS check requires `ACTIVE` and OIDC issuer.
 - [ ] Node check verifies `node-type=system` and `node-type=gpu`; `ALLOW_GPU_ZERO=true` downgrades missing GPU nodes to WARN.
+- [ ] Platform-capacity check requires one distinct Ready, non-GPU
+      `node-type=compute` node per OVDC replica and gates on Kubernetes
+      allocatable memory, not nominal EC2 instance memory.
 - [ ] ECR pull check proves required read actions with IAM simulation when possible, with managed-policy fallback.
 - [ ] Optional S3 RBAC and S3 probe checks WARN when not configured.
 - [ ] GPU Operator check inspects pod Ready conditions, not just pod phase.

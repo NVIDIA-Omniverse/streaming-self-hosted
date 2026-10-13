@@ -7,7 +7,7 @@
 # them, which leaves orphan PVCs that cannot bind. Disable every backend you do not use.
 #
 # The chart is "ovcontentcache" but the container image stays "usd-content-cache"
-# (4.0.x is a chart rename only; appVersion 3.0.1 pins the image tag).
+# with security-patch tag 3.0.2; chart 4.0.4 otherwise defaults to image 3.0.1.
 #
 # Usage:
 #   helm install ovcc nvidia-omniverse/ovcontentcache \
@@ -27,6 +27,9 @@
 # without being throttled by Kubernetes resource quotas.
 
 replicaCount: 1
+
+image:
+  tag: "3.0.2"
 
 persistence:
   # Pinned to hyperdisk-extreme on GKE g4: at 128 GiB, hyperdisk-extreme
@@ -83,7 +86,7 @@ affinity:
             - key: app.kubernetes.io/name
               operator: In
               values:
-                - ovcontentcache
+                - ovcc
         topologyKey: kubernetes.io/hostname
 
 metrics:

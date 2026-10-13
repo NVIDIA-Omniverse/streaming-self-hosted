@@ -1,0 +1,52 @@
+# OVCC chart 4.0.4 / image 3.0.2; S3 backend example with TLS enabled.
+# See ovcc-eks-s3-values.yaml as a reference, not an AWS or sizing requirement.
+# Uses node-local emptyDir storage; select nodes backed by local SSD and size
+# the cache to their available ephemeral capacity. Cache is lost on pod recreation.
+# For PVC storage, set persistence.mode: pvc and supply the site's STORAGE_CLASS.
+# Enable ServiceMonitor only if the cluster has its CRD and a compatible scraper.
+replicaCount: 1
+image:
+  tag: 3.0.2
+persistence:
+  mode: ephemeral
+  volumes:
+  - name: s3
+    path: /proxy_cache_s3
+    sizeGi: 128
+    minFreeSizePercentage: 7
+nginx:
+  backends:
+    s3:
+      include: true
+    gcs:
+      include: false
+    azure:
+      include: false
+    nucleus:
+      include: false
+  proxyCache:
+    paths:
+    - name: s3
+      path: /proxy_cache_s3/data
+      maxIdleTime: 1d
+      metadataMemorySize: 1024m
+nodeSelector: {}
+tolerations: []
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchExpressions:
+        - key: app.kubernetes.io/name
+          operator: In
+          values:
+          - ovcc
+      topologyKey: kubernetes.io/hostname
+metrics:
+  prometheus:
+    podMonitoring:
+      enabled: false
+    serviceMonitor:
+      enabled: false
+tls:
+  enabled: true

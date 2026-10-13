@@ -1,7 +1,7 @@
 
 # OVCC Client Integration
 
-When OVCC is deployed as part of a MEGA simulation stack, additional configuration is required for OmniClient and storage-service compatibility. The OVCC 4.0.x runtime is byte-identical to UCC 3.0 (`usd-content-cache:3.0.1`), so these client requirements are unchanged from UCC.
+When OVCC is deployed as part of a MEGA simulation stack, additional configuration is required for OmniClient and storage-service compatibility. This skill uses chart 4.0.4 with `usd-content-cache:3.0.2`. The deployment guide describes this security patch as having no configuration or behavior changes; the client requirements below carry forward from UCC.
 
 ## TLS Required for OmniClient < v2.68.1
 

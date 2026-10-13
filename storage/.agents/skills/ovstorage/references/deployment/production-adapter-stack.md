@@ -22,8 +22,8 @@ The chart and image versions below are pinned from repo `image-manifest/manifest
 
 | Service | Helm Chart | Chart Version | Container Image | Image Tag |
 |---------|-----------|---------------|-----------------|-----------|
-| Storage Service | `storage-service` | 1.0.2 | `storage-service` | 1.0.2 |
-| Discovery Service | `discovery-service` | 2.3.8 | `simple-nginx` | 1.0.2 |
+| Storage Service | `storage-service` | 1.2.0 | `storage-service` | 1.2.0 |
+| Discovery Service | `discovery-service` | 2.3.11 | `simple-nginx` | 1.1.0 |
 | Event Aggregation | `event-aggregation-service` | 1.5.52 | `event-aggregation-service` | 1.5.52 |
 | Event Consumer | `event-consumer-service` | 1.9.6 | `event-consumer-service` | 1.9.6 |
 | RabbitMQ | `rabbitmq` | 99.3.0 | `rabbitmq` | 4.1.3-debian-12-r1 |
@@ -80,7 +80,7 @@ The Storage Service is the core component that provides S3 and Azure Blob Storag
 
 ### Choose Your Storage Backend
 
-The Storage Service supports **S3** and **Azure Blob Storage** backends (public or private). S3-compatible storage (e.g., MinIO) is also supported via custom endpoints. Set up at least one backend before deploying.
+The Storage Service supports **S3** and **Azure Blob Storage** backends (public or private). S3-compatible storage (e.g., MinIO) is also supported via custom endpoints -- see [S3-Compatible (Non-AWS) Endpoints](#s3-compatible-non-aws-endpoints). Set up at least one backend before deploying.
 
 ### AWS S3 Bucket Permissions
 
@@ -168,10 +168,10 @@ az role assignment create \
 
 ```bash
 # pull the chart from NGC
-helm fetch https://helm.ngc.nvidia.com/nvidia/omniverse/charts/storage-service-1.0.2.tgz --username='$oauthtoken' --password=${NGC_API_KEY}
+helm fetch https://helm.ngc.nvidia.com/nvidia/omniverse/charts/storage-service-1.2.0.tgz --username='$oauthtoken' --password=${NGC_API_KEY}
 
 # unpack the chart
-tar -xvf storage-service-1.0.2.tgz
+tar -xvf storage-service-1.2.0.tgz
 cd storage-service
 ```
 
@@ -228,6 +228,35 @@ extraEnvs:
         name: {mybucketname}-bucket-secret
         key: BUCKET_SECRET_ACCESS_KEY
 ```
+
+#### S3-Compatible (Non-AWS) Endpoints
+
+S3-compatible backends (MinIO, Dell ECS, Ceph RGW, Wasabi, …) are configured with the
+same `config.storage.s3.endpoints` keys as AWS S3. **Do not configure them from this
+page.** The endpoint key format, the `endpointUrl` / `addressingStyle` / `bucket` /
+`region` overrides, which of them are required, and a worked non-AWS example are
+specified by the Storage Service chart's own reference:
+
+- **S3 backend → Endpoint settings** —
+  <https://gitlab-master.nvidia.com/omniverse/usd-storage/api-storage/storage-service/-/blob/1.2.3/docs/helm/storage-backend.rst>
+- **Authentication (the `credentials` object and its providers)** — same page, *S3 backend
+  → Authentication*.
+- **Upgrading an older values file** —
+  <https://gitlab-master.nvidia.com/omniverse/usd-storage/api-storage/storage-service/-/blob/1.2.3/docs/helm/migration.rst>
+
+Read that page before answering or generating any S3 endpoint configuration; it is the
+authoritative source and it changes with the chart. Two points worth carrying over,
+because getting them wrong is the common failure:
+
+- An endpoint key is an **address, not a hostname**: `<scheme>://<host>(/<path>)?`.
+  Declaring `object.example.com` on its own is discouraged — it reads as if it covered
+  both HTTP and HTTPS, which it does not.
+- Encoding the bucket in the key's **path** (`https://s3.example.com/mybucket`) is what
+  selects path-style addressing for non-AWS backends.
+
+The links above are pinned to chart **1.2.3**. If the deployment targets a different
+chart version, follow the same paths at that version's tag rather than trusting this
+pin.
 
 #### Azure Private Blob Storage Configuration
 
@@ -384,9 +413,9 @@ The Discovery Service provides a single JSON endpoint so clients can find and co
 ### Pull the Discovery Service Helm Chart
 
 ```bash
-helm fetch https://helm.ngc.nvidia.com/nvidia/omniverse/charts/discovery-service-2.3.8.tgz --username='$oauthtoken' --password=${NGC_API_KEY}
+helm fetch https://helm.ngc.nvidia.com/nvidia/omniverse/charts/discovery-service-2.3.11.tgz --username='$oauthtoken' --password=${NGC_API_KEY}
 
-tar -xvf discovery-service-2.3.8.tgz
+tar -xvf discovery-service-2.3.11.tgz
 cd discovery-service
 ```
 

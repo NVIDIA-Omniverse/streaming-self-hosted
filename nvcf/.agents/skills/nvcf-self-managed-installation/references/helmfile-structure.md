@@ -2,10 +2,9 @@
 
 ## Directory Layout
 
-```
+```bash
 nvcf-self-managed-stack/
 |-- helmfile.d/
-|   |-- 000-prepare.yaml.gotmpl      # Validation hooks
 |   |-- 01-dependencies.yaml.gotmpl  # NATS, Cassandra, OpenBao
 |   |-- 02-core.yaml.gotmpl          # NVCF services + ingress
 |   `-- 03-observability.yaml.gotmpl # Observability stack (optional)
@@ -130,6 +129,7 @@ From lowest to highest priority:
 `global.yaml.gotmpl` reads from `.Values` (the merged environment + env-specific YAML) and constructs chart-specific values. It only passes through keys it explicitly references:
 
 ### Cassandra
+
 - `cassandra.replicaCount`
 - `cassandra.image.*` (registry, repository)
 - `cassandra.migrations.image.*`
@@ -138,6 +138,7 @@ From lowest to highest priority:
 - `cassandra.global.defaultStorageClass`
 
 ### NATS
+
 - `nats.container.image.*`
 - `nats.reloader.image.*`
 - `nats.natsBox.container.image.*`
@@ -145,6 +146,7 @@ From lowest to highest priority:
 - `nats.podTemplate.merge.spec.nodeSelector` (if enabled)
 
 ### OpenBao
+
 - `openbao.migrations.image.*` and `openbao.migrations.env`
 - `openbao.injector.image.*`
 - `openbao.server.image.*`
@@ -152,6 +154,7 @@ From lowest to highest priority:
 - Node selectors (if enabled)
 
 ### Services (API, SIS, etc.)
+
 - `<service>.image.*` (registry, repository)
 - `<service>.nodeSelector` (if enabled)
 - `<service>.env.*` (observability settings)
@@ -173,8 +176,6 @@ addons:
     enabled: true
     gateway:
       replicaCount: 1
-      auth:
-        grpcInsecure: true
       metrics:
         serviceMonitor:
           enabled: false
@@ -183,17 +184,6 @@ addons:
       metrics:
         serviceMonitor:
           enabled: false
-      loadBalancer:
-        config: |
-          {
-            "default": "power-of-two",
-            "request_algorithms": {
-              "power-of-two": "power-of-two",
-              "round-robin": "round-robin",
-              "random": "random",
-              "groq-multiregion": "groq-multiregion"
-            }
-          }
 
 agentConfig:
   mergeConfig: |
@@ -204,25 +194,36 @@ agentConfig:
       stargateQUICInsecure: true
 ```
 
-Use `replicaCount: 1` only for local or single-node test clusters. For shared
-or production clusters, use the required replica count and TLS-capable service
-configuration. `addons.llm.gateway.auth.grpcInsecure` and
-`workload.stargateQUICInsecure` enable plaintext transports. Do not use them in
-production.
+Use `replicaCount: 1` only for local or single-node test clusters. The bundled
+NVCF API currently serves plaintext gRPC on port 9090, so the self-managed stack
+defaults the LLM API Gateway authentication hop to plaintext. Set
+`addons.llm.gateway.auth.grpcInsecure: false` only with a TLS-capable NVCF API.
 
-The request-router configuration uses hyphenated algorithm IDs, while function
-models use underscored `routingMethod` values. Include every non-default
-algorithm used by a function in `request_algorithms`, or invocation can fail
-with HTTP `400` before a backend is selected.
+Worker-to-router transport is separate. For shared or production clusters, use
+the required replica count and the managed TLS configuration. The
+`workload.stargateQUICInsecure` setting enables plaintext worker transport and
+must not be used in production.
+
+The request router uses `power-of-two` when no load-balancer configuration is
+set. Configure other routing methods with the
+[LLM Request Router Load Balancing](https://github.com/NVIDIA/nvcf/blob/main/docs/self-managed/llm-request-router-load-balancing.md)
+guide.
 
 If the sidecar image is mirrored outside the stack's default image registry and
 repository, set the generated worker sidecar image explicitly:
 
 ```yaml
 api:
-  env:
-    NVCF_SIDECARS_LLM_ROUTER_CLIENT_IMAGE: <registry>/<repository>/pylon:0.2.1
+  remoteConfig:
+    configData:
+      nvcf:
+        sidecars:
+          llm-router-client-image: <registry>/<repository>/pylon:0.14.1
 ```
+
+The legacy `api.env.NVCF_SIDECARS_LLM_ROUTER_CLIENT_IMAGE` path is deprecated.
+The stack translates it for one compatibility window, but new configurations
+must use the remote-config path. Conflicting values fail rendering.
 
 Render and apply the updated control-plane environment, then refresh every
 registered compute plane using the same handoff used for its installation so
@@ -238,12 +239,15 @@ Use the complete compute-plane install command from
 CLI-profile installation must remain profile-driven; a Helmfile installation
 must remain values-driven.
 
-Existing LLM function pods keep their existing sidecar arguments. Recreate or
-redeploy those functions after the compute-plane refresh. Verify the control
-plane, route, and worker sidecar:
+Existing LLM function versions retain the worker-sidecar image metadata
+captured when the version is created. Replacing pods or redeploying the same
+version does not apply a new Pylon image. After the control-plane update,
+create and deploy a new function version. Verify the control plane, route, and
+worker sidecar:
 
 ```bash
-kubectl get deploy -n nvcf llm-api-gateway llm-request-router
+kubectl get deploy -n nvcf llm-api-gateway
+kubectl get statefulset -n nvcf llm-request-router
 kubectl get pods -n nvcf | grep -E 'llm-api-gateway|llm-request-router'
 kubectl get httproute -A | grep llm
 kubectl -n nvcf-backend get pod <function-pod> \
@@ -253,18 +257,8 @@ kubectl -n nvcf-backend get pod <function-pod> \
 For local plaintext clusters, the `llm-worker` args must include
 `--quic-insecure`.
 
-For sticky LLM routing, `addons.llm.requestRouter.loadBalancer.config` can embed
-Stargate JSON. The public gateway header is `x-multi-turn-session-id`, but
-Stargate only consumes the internal `x-cache-affinity-key`. Sticky backend
-selection requires a cache-affinity-aware algorithm: `groq-multiregion` with
-`cache_affinity_backend_selection_count > 0`, or `pulsar` with backend KV
-metrics and capacity values. `power-of-two`, `round-robin`, and `random` do not
-provide multi-turn session stickiness.
-
-If a model config sets `require_cache_affinity_key: true`, direct router
-validation calls must include `x-cache-affinity-key`. Gateway clients should
-still use only `x-multi-turn-session-id`; the gateway supplies the router
-affinity header.
+For load-balancer schema and algorithm behavior, see the
+[Stargate configuration guide](https://github.com/NVIDIA/nvcf/blob/main/src/libraries/rust/stargate/docs/load-balancer-configuration.md).
 
 ## Helmfile Selectors
 

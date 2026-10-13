@@ -1,0 +1,16 @@
+# New OVDC PVCs: independently provision disk capacity, IOPS and throughput.
+# Check region/zone support and node VM disk limits before deployment:
+# https://learn.microsoft.com/en-us/azure/aks/use-premium-v2-disks
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ovdc-premium-v2
+provisioner: disk.csi.azure.com
+parameters:
+  skuName: PremiumV2_LRS
+  cachingMode: None
+  DiskIOPSReadWrite: "4000"
+  DiskMBpsReadWrite: "1000"
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete
