@@ -14,11 +14,11 @@ allowed-tools: Bash, Read, Edit, Grep, Glob
 metadata:
   internal: false
   author: "nvcf-core-eng <nvcf-core-eng@exchange.nvidia.com>"
-  version: "1.1.0"
+  version: "1.1.1"
   compatibility: >-
     Requires helm >= 3.12 < 4, helm-diff plugin >= 3.11, kubectl within one
-    minor version of the cluster, yq, jq, and helmfile 1.1.x preferred; reject
-    helmfile 1.2.x; helmfile 1.3.0+ requires sequential execution support.
+    minor version of the cluster, yq, jq, and helmfile 1.1.x. The synced
+    source bundle records Helm 3.21.4 and Helmfile 1.1.9.
   tags: [nvcf, self-managed, self-hosted, in-place-upgrade, inplace-upgrade, image-manifest, helmfile, control-plane, compute-plane, nvca]
   languages: [bash, yaml]
   frameworks: [helmfile, helm, kubectl]
@@ -44,14 +44,19 @@ This skill owns only NVCF component upgrade semantics:
   and images.
 - Existing Helmfile bundle roots for `nvcf-self-managed-stack` and, when
   present, `nvcf-compute-plane-stack`.
+- Shared `nvcf/observability` runtime when the selected profile is enabled;
+  install it once per cluster and preserve the sibling directory layout.
 - Existing Kubernetes clusters and existing registry mirrors.
+
+Check the selected observability profile before mirroring. Include the shared
+observability group when enabled; validate bundled local charts separately.
 
 Use provider or staging skills for provider-specific artifact mirroring before
 this skill runs. For Azure, mirror only the NVCF groups through the ACR mirror
 flow. For AWS, mirror only the NVCF groups through the ECR mirror flow:
 
 ```bash
-INCLUDE_GROUPS=nvcf-self-managed-stack,nvcf-compute-plane-stack
+INCLUDE_GROUPS=nvcf-self-managed-stack,nvcf-compute-plane-stack,nvcf-observability-stack
 ```
 
 Do not use this skill to upgrade AKS/EKS, node pools, VPC/VNet, GPU Operator,
@@ -139,7 +144,7 @@ mark each one satisfied, not applicable, or blocked:
 | --- | --- |
 | Target confirmation | CSP, account/subscription, region/location, cluster name, namespaces, kube context or kubeconfig, Helmfile environment, target registry, and repository path are confirmed. |
 | Maintenance window | Operator accepts the expected service interruption risk for changed stateful dependencies and one-replica services. |
-| Toolchain | Supported Helm 3, helm-diff, kubectl, yq, jq, and the provider CLI are available. Use helmfile 1.1.x by default; reject helmfile 1.2.x; use helmfile 1.3.0+ only with sequential execution enabled. |
+| Toolchain | Supported Helm 3, helm-diff, kubectl, yq, jq, and the provider CLI are available. Use Helmfile 1.1.x for this bundle; its candidate toolchain is Helm 3.21.4 / Helmfile 1.1.9. |
 | Current health | Cassandra, OpenBao, NATS, API, SIS, and NVCA, when installed, are healthy before mutation unless the operator explicitly requested recovery. |
 | Namespace layout | Fixed NVCF namespaces exist as expected: `cassandra-system`, `nats-system`, `vault-system`, `nvcf`, `api-keys`, `ess`, `sis`, `nvca-operator`, and compute-plane namespaces when installed. |
 | Manifest provenance | Current and candidate manifests are recorded, candidate `version` and `generated_at` are present, and changed NVCF entries are classified as charts or images. |
@@ -200,10 +205,9 @@ yq --version
 jq --version
 ```
 
-Reject Helm 4 and helmfile `1.2.x`. Helmfile `1.1.x` is the documented default.
-If using helmfile `1.3.0+`, add `--sequential-helmfiles` to every direct
-`helmfile apply` or `helmfile sync` command, or confirm the stack Makefile wraps
-that flag.
+Reject Helm 4 for this NVCF bundle and use Helmfile `1.1.x`; the recorded
+candidate toolchain is Helm 3.21.4 / Helmfile 1.1.9. Do not infer support for
+another Helmfile family solely from a sequential flag.
 
 Verify the stack roots:
 
@@ -264,10 +268,14 @@ registration values or changing cluster identity.
 
 ## Manifest Handling
 
-The candidate manifest is the source of truth. Inspect only the NVCF groups:
+The candidate streaming `image-manifest/manifest.yaml` is the source of truth
+for deployment chart/image versions. Upstream source inventories and stack
+`VERSION` files record source provenance only.
+Never replace the streaming image manifest with those upstream pins. Inspect
+the NVCF groups (including shared observability when its profile is enabled):
 
 ```bash
-yq '.version, .generated_at, ."nvcf-self-managed-stack", ."nvcf-compute-plane-stack"' "$CANDIDATE_MANIFEST"
+yq '.version, .generated_at, ."nvcf-self-managed-stack", ."nvcf-compute-plane-stack", ."nvcf-observability-stack"' "$CANDIDATE_MANIFEST"
 ```
 
 Validate:
@@ -281,6 +289,12 @@ Validate:
 - Versions are pinned strings or non-empty string lists; reject `latest`,
   empty values, and unresolved placeholders.
 - The current and candidate manifests are both recorded in the upgrade plan.
+
+Compare bundle templates, local charts and rendered values even when manifest
+entries are unchanged. Source-only changes can alter migrations, settings or
+hooks. Reconcile hardcoded image overrides in `environments/base.yaml` with the
+streaming manifest; updating chart lookup expressions alone does not update
+those images. Report source bundle versions separately from deployment pins.
 
 Diff current and candidate manifests by NVCF group. Classify changed entries as
 charts when their key starts with `helm-`; classify the rest as container
@@ -419,15 +433,20 @@ rollout.
 
 Check at minimum:
 
-- All non-`helm-*` entries from `nvcf-self-managed-stack`.
-- All `helm-*` entries from `nvcf-self-managed-stack`.
-- All entries from `nvcf-compute-plane-stack` when compute plane is installed.
+- All published image/chart entries from `nvcf-self-managed-stack`.
+- All published entries from `nvcf-compute-plane-stack` when installed.
+- Shared `nvcf-observability-stack` artifacts when its profile is enabled.
+- Charts referenced by local Helmfile paths: verify their bundled `Chart.yaml`,
+  matching manifest version and templates. Keep the sibling stack directories
+  together.
 - Any list-valued manifest entry has every listed tag available, because lists
   are used during upgrade transitions.
 
-If a chart was served from a non-OCI Helm repository, require evidence that it
-was converted and pushed into the OCI mirror before pointing
-`global.helm.sources` at that mirror.
+For a chart served through HTTPS, direct use is supported by
+`global.helm.sources.url`. If the deployment uses a private OCI mirror, require
+conversion/push evidence before selecting its `registry` and `repository`.
+Distinguish authentication/permission failures from a confirmed missing tag;
+an inventory listing alone does not prove current registry availability.
 
 ## Render And Diff
 
@@ -592,6 +611,15 @@ Cassandra migration method have completed.
 
 For ordinary control-plane upgrades:
 
+- If the enabled profile delegates to `00-observability-infrastructure.yaml.gotmpl`,
+  reconcile that shared stack once in the target cluster before dependent
+  control-plane releases. Keep the autoscaler backend and state-metrics gates.
+- For an upgrade from the hostname-reservation policy described by the target
+  bundle, run its `apply-hostname-policy` pre-step before services. The helper
+  validates that the manifest-pinned gateway chart contains the required fix;
+  stop if it does not. Do not bump the manifest or blindly run the helper for
+  unrelated upgrades.
+
 If the manifest diff includes Cassandra chart, image, or migration changes, run
 the Cassandra upgrade path first. Do not apply the whole dependency release
 group until Cassandra has passed its post-upgrade checks.
@@ -636,6 +664,14 @@ make -C "$COMPUTE_PLANE_STACK" apply \
   CLUSTER_NAME="$CLUSTER_NAME" \
   KUBECONFIG_FILE="$COMPUTE_PLANE_KUBECONFIG_FILE"
 ```
+
+After all in-scope control/compute phases pass, apply the standalone
+`04-upgrade-receipt.yaml.gotmpl` stage in the control-plane context when present.
+The receipt has no `release-group` label, so the selector-scoped sequence above
+omits it. Do not record a successful upgrade before the earlier phases pass.
+Verify the `nvcf-upgrade-receipt` ConfigMap's `installed_stack_version` against
+the source stack `VERSION`; it is not evidence that every manifest pin or the
+modified downstream combination has been qualified. Validate those separately.
 
 For multi-cluster deployments, repeat the compute-plane render, diff, apply,
 and validation for each registered compute cluster. Do not assume the ambient

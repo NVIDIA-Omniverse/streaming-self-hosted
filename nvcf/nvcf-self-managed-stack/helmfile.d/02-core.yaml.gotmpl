@@ -6,10 +6,26 @@ environments:
 
 ---
 
+{{- $helmSourceURL := dig "global" "helm" "sources" "url" "" .Values }}
+{{- if and $helmSourceURL (not (hasPrefix "https://" $helmSourceURL)) }}
+{{- fail "global.helm.sources.url must use https://" }}
+{{- end }}
+
 repositories:
   - name: nvcf
+{{- if $helmSourceURL }}
+    url: {{ $helmSourceURL | quote }}
+    {{- if dig "global" "helm" "sources" "username" "" .Values }}
+    username: {{ dig "global" "helm" "sources" "username" "" .Values | quote }}
+    {{- end }}
+    {{- if dig "global" "helm" "sources" "password" "" .Values }}
+    password: {{ dig "global" "helm" "sources" "password" "" .Values | quote }}
+    {{- end }}
+{{- else }}
     url: {{ .Values.global.helm.sources.registry }}/{{ .Values.global.helm.sources.repository }}
     oci: true
+{{- end }}
+
 
 helmDefaults:
   createNamespace: true
@@ -31,36 +47,74 @@ templates:
 
 releases:
 
+  # NOTE: every release below depends on cassandra-system/cassandra, and
+  # nats-auth-callout-service depends on nats-system/nats, both defined in
+  # 01-dependencies.yaml.gotmpl. Those edges are already enforced by the
+  # 01-dependencies -> 02-core stage boundary (helmfile.d/*.yaml.gotmpl files
+  # run sequentially under the pinned helmfile v1.1.x), so they are
+  # intentionally not repeated as needs: entries here. Only edges between
+  # releases within this same file are listed explicitly. The same applies to
+  # function-autoscaler in 03-observability.yaml.gotmpl, which depends on
+  # cassandra-system/cassandra and nvcf/api via the 02-core -> 03-observability
+  # stage boundary.
+
   # --- NVCF Services ---
   - name: api-keys
-    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-api-keys" "1.8.0" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-api-keys" "1.8.2" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
     namespace: api-keys
     inherit:
       - template: service
 
   - name: sis
-    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-sis" "2.4.0" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-sis" "2.4.2" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
     namespace: sis
     inherit:
       - template: service
+    condition: icms.enabled
 
   - name: api
-    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-api" "1.27.1" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-api" "1.27.5" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
     namespace: nvcf
     inherit:
       - template: service
     needs:
+      # Required deployment order: API Keys, ICMS/SIS, Notary, and Helm ReVal
+      # must be up before Cloud Functions (this release), which registers an
+      # OAuth client and base URL with each at startup. Cassandra and NATS
+      # prerequisites are already enforced by the stage boundary between
+      # 01-dependencies.yaml.gotmpl and this file, so they are not repeated
+      # here.
+      - api-keys/api-keys
+      {{- if dig "icms" "enabled" true .Values }}
+      - sis/sis
+      {{- end }}
       # not needed to start, but needed for bootstrapping account which is done with a script in the api helm chart
       - ess/ess-api
-                      
+      - nvcf/notary-service
+      - nvcf/reval
+
   - name: nvct-api
-    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-nvct-api" "1.6.0" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-nvct-api" "1.6.1" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
     namespace: nvcf
     inherit:
       - template: service
+    needs:
+      # Required deployment order: Cloud Tasks (this release) registers an
+      # OAuth client and base URL with API Keys, ICMS/SIS, ESS, Notary, and
+      # Helm ReVal, and separately depends on Cloud Functions per the Cloud
+      # Functions -> Cloud Tasks edge. Cassandra prerequisite is already
+      # enforced by the 01-dependencies stage boundary.
+      - api-keys/api-keys
+      {{- if dig "icms" "enabled" true .Values }}
+      - sis/sis
+      {{- end }}
+      - ess/ess-api
+      - nvcf/notary-service
+      - nvcf/reval
+      - nvcf/api
 
   - name: invocation-service
-    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-invocation-service" "1.6.1" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-invocation-service" "1.6.2" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
     namespace: nvcf
     inherit:
       - template: service
@@ -77,7 +131,7 @@ releases:
 
   - name: ratelimiter
     chart: nvcf/helm-nvcf-rate-limiter
-    version: 1.1.0
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-rate-limiter" "1.2.1" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
     namespace: nvcf
     condition: rateLimiter.enabled
     values:
@@ -88,13 +142,13 @@ releases:
       - nvcf/api
 
   - name: ess-api
-    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-ess-api" "1.8.2" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-ess-api" "1.8.3" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
     namespace: ess
     inherit:
       - template: service
 
   - name: notary-service
-    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-notary-service" "1.6.0" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-notary-service" "1.6.1" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
     namespace: nvcf
     inherit:
       - template: service
@@ -146,6 +200,30 @@ releases:
     namespace: nats-system
     values:
       - ../global.yaml.gotmpl
+      - image:
+          repository: {{ .Values.global.image.registry }}/{{ .Values.global.image.repository }}/nvcf-nats-auth-callout-service
+          {{- with dig "natsAuthCalloutService" "image" "tag" "" .Values }}
+          tag: {{ . | quote }}
+          {{- end }}
+      - serviceConfig:
+          service:
+            nats_url: "nats://nats.nats-system.svc.cluster.local:4222"
+      - servicePluginConfigSecret:
+          enabled: true
+          name: nats-nkeys
+          key: auth-callout-plugin.yaml
+          mountPath: /etc/plugin-config/plugin.yaml
+      - extraEnvs:
+          - name: NVCF_NATS_AUTH_CALLOUT_SERVICE_SERVICE_NKEY__SEED
+            valueFrom:
+              secretKeyRef:
+                name: {{ dig "nats" "authCallout" "secretName" "nats-auth-callout-nkeys" .Values | quote }}
+                key: nkey_seed
+          - name: NVCF_NATS_AUTH_CALLOUT_SERVICE_SERVICE_NKEY__SIGNATURE
+            valueFrom:
+              secretKeyRef:
+                name: {{ dig "nats" "authCallout" "secretName" "nats-auth-callout-nkeys" .Values | quote }}
+                key: nkey_signature
       {{- if .Values.global.imagePullSecrets }}
       - imagePullSecrets:
           {{- toYaml .Values.global.imagePullSecrets | nindent 10 }}
@@ -154,8 +232,11 @@ releases:
       release-group: services
 
   - name: llm-request-router
-    chart: nvcf/helm-nvcf-llm-request-router
-    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-llm-request-router" "1.14.1" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    {{- $llmRequestRouterChartPath := dig "addons" "llm" "requestRouter" "chartPath" "" .Values }}
+    chart: {{ $llmRequestRouterChartPath | default "nvcf/helm-nvcf-llm-request-router" | quote }}
+    {{- if not $llmRequestRouterChartPath }}
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-llm-request-router" "1.14.3" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    {{- end }}
     namespace: nvcf
     condition: addons.llm.enabled
     values:
@@ -178,7 +259,7 @@ releases:
       release-group: services
 
   - name: vanity-gateway
-    version: 0.1.0-nvcf-10204.1
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-vanity-gateway" "0.5.0" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
     namespace: nvcf
     condition: addons.vanityGateway.enabled
     inherit:
@@ -188,13 +269,29 @@ releases:
     labels:
       release-group: services
 
+  - name: nvcf-ui
+    chart: nvcf/helm-nvcf-ui
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-ui" "1.1.4" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    namespace: nvcf-ui
+    condition: addons.nvcfUi.enabled
+    values:
+      - ../global.yaml.gotmpl
+    labels:
+      release-group: services
+
   # --- Gateway API Ingress ---
   - name: ingress
-    chart: nvcf/nvcf-gateway-routes
-    version: 1.14.0
+    {{- $gatewayRoutesChartPath := dig "ingress" "gatewayApi" "chartPath" "" .Values }}
+    chart: {{ $gatewayRoutesChartPath | default "nvcf/nvcf-gateway-routes" | quote }}
+    {{- if not $gatewayRoutesChartPath }}
+    version: {{ dig "nvcf-self-managed-stack" "helm-nvcf-gateway-routes" "1.18.3" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    {{- end }}
     needs:
       - nvcf/notary-service
       - api-keys/api-keys
+      {{- if dig "addons" "nvcfUi" "enabled" false .Values }}
+      - nvcf-ui/nvcf-ui
+      {{- end }}
     namespace: {{ .Values.ingress.gatewayApi.controllerNamespace }}
     condition: ingress.gatewayApi.enabled
     values:

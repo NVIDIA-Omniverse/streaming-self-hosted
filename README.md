@@ -9,6 +9,13 @@ Use this repository with an agent that supports skills. Start at the repository
 root for end-to-end orchestration, or open a component directory when you only
 want one part of the stack.
 
+## Release 26.10.1
+
+Use [image-manifest/manifest.yaml](image-manifest/manifest.yaml) for this
+release's chart and container image versions,
+[image-manifest/source-registry-config.yaml](image-manifest/source-registry-config.yaml)
+for source locations, and [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 ## Quick Start
 
 Clone the release repository:
@@ -42,7 +49,7 @@ orgs; do not paste the key into prompts, scripts, or chat.
 Install or verify the tools used by the skills:
 
 - Common: `kubectl`, `helm`, `jq`, `curl`, `python3`
-- NVCF: [`nvcf-cli`](https://docs.nvidia.com/nvcf/1.0.3/overview/cli), `helmfile` 1.1.x and the `helm-diff` plugin
+- NVCF: [`nvcf-cli`](https://docs.nvidia.com/nvcf/1.0.4/overview/cli), `helmfile` 1.1.x and the `helm-diff` plugin
 - NGC: [`ngc` CLI](https://docs.ngc.nvidia.com/cli/index.html)
 - Azure: `az`
 - AWS: `aws`, `terraform`
@@ -54,6 +61,19 @@ Open this repository in your agent and ask it to use the orchestration skill.
 Start in plan mode first. Review the generated plan and scripts before asking
 the agent to deploy.
 
+## Helm Charts and Image Mirroring
+
+NVCF charts are available through the HTTP Helm repository at
+<https://helm.ngc.nvidia.com/nvidia/nvcf>. Chart repository settings and
+container image registry settings are separate. Check the release manifest and
+source registry configuration for the required names and versions; some charts
+use a different published name from their manifest key.
+
+When using an OCI mirror, download HTTP Helm chart packages with `helm pull`
+and publish them to the mirror with `helm push` before deployment. Keep the
+selected chart versions unchanged, and configure the stack to use the mirror.
+Verify access to every required chart and image version before applying changes.
+
 ## End-to-End Orchestration
 
 Use the root orchestration skill when you want the full deployment sequence:
@@ -63,13 +83,18 @@ Use the root orchestration skill when you want the full deployment sequence:
 2. Mirror required images and charts into ACR, ECR, or your OCI registry when needed.
 3. Install NVCF self-managed prerequisites and control plane.
 4. Install the compute plane, register the cluster, and add LLS and TURN for streaming.
-5. Deploy cache services such as OVDC, UCC, or GXCache.
+5. Deploy OVDC and any required OVCC content cache. Retain GXCache for
+   existing deployments that require it.
 6. Deploy Omniverse Storage APIs with the appropriate storage adapter and Discovery.
 7. Run final readiness checks.
 
 The orchestration skill delegates each phase to the component skill that owns
 that part of the stack. It should stop at failed readiness gates instead of
 continuing blindly.
+
+GXCache is deprecated in favor of OVDC. Use OVDC for new deployments; the
+GXCache skill remains available for existing installations. Add OVCC where
+content caching is required by the workload.
 
 ## Prompt Examples
 

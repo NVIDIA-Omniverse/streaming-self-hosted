@@ -270,7 +270,7 @@ clean:
 NVCF_CLI_REPO ?= $(shell cd "$(MAKEFILE_DIR)/../../.." && pwd)/src/clis/nvcf-cli
 NVCF_CLI ?= $(NVCF_CLI_REPO)/nvcf-cli
 NVCF_CLI_CONFIG ?=
-CONTROL_PLANE_PROFILE ?= $(shell dirname "$(MAKEFILE_DIR)")/self-managed/out/control-plane-profile.yaml
+CONTROL_PLANE_PROFILE ?= $(shell dirname "$(MAKEFILE_DIR)")/nvcf-self-managed-stack/out/control-plane-profile.yaml
 
 # --- Cluster Registration Settings ---
 NCA_ID          ?= nvcf-default
@@ -346,7 +346,7 @@ help:
 	@echo "                     from the correct cluster)"
 	@echo "  OUTPUT_DIR         Output and Helmfile handoff directory (default: ./out)"
 	@echo "  CONTROL_PLANE_PROFILE  Generated control-plane profile (default:"
-	@echo "                         ../self-managed/out/control-plane-profile.yaml)"
+	@echo "                         ../nvcf-self-managed-stack/out/control-plane-profile.yaml)"
 	@echo "  NVCF_CLI_CONFIG        Optional nvcf-cli config path for registration"
 	@echo "  COMPUTE_KUBE_CONTEXT   Optional kubeconfig context for registration and install"
 	@echo "  CLUSTER_REGION     Cluster region (default: $(CLUSTER_REGION))"

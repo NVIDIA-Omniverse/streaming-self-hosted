@@ -13,7 +13,7 @@ license: Apache-2.0
 allowed-tools: Bash, Read, Edit, Grep, Glob
 metadata:
   internal: false
-  version: "1.1.0"
+  version: "1.1.1"
   tags: [streaming, upgrade, orchestrator, streaming-staging, aws, azure, manifest]
   languages: [bash, yaml]
   frameworks: [helmfile, helm, kubectl]
@@ -69,7 +69,7 @@ Discover or collect before sequencing:
 | Cluster name | User prompt, `streaming-env.sh`, Terraform outputs, or kube context. |
 | Account/subscription and region/location | `aws sts get-caller-identity`, `az account show`, env file, or user prompt. |
 | Current manifest | Existing deployment bundle, previous release artifact, or operator-provided path. |
-| Candidate manifest | New `image-manifest/manifest.yaml` or release artifact. |
+| Candidate manifest | New `image-manifest/manifest.yaml` from the streaming release artifact. |
 | Installed components | Helm releases, namespaces, and registration files. |
 | Execution mode | Plan, Diff, Apply, Recover, or Validate. |
 
@@ -129,6 +129,13 @@ and target NVCF stack versions before sequencing. Route the NVCF phase through
 the published NVIDIA upgrade procedure when one exists, especially documented
 migration paths such as `0.5.x` to `0.6.0` and `0.6.0` to `0.6.1`.
 
+Keep deployment versions controlled by the streaming image manifest. Source
+`VERSION` files and the upstream candidate inventories identify where code came
+from; they do not override chart/image pins or prove the downstream combination
+qualified. Compare stack templates, local charts and rendered values as well as
+manifest entries: source changes can require an NVCF phase with no version diff.
+Use the selected stack's supported Helm 3 / Helmfile 1.1.x toolchain.
+
 Do not treat a documented migration release as a simple image refresh. If no
 published path or release-note guidance applies, stop at Plan or Diff unless the
 operator explicitly accepts the unsupported upgrade risk.
@@ -177,18 +184,21 @@ Read each child skill before executing that phase.
    target registry, and whether mutation is authorized.
 2. Capture baseline state: pods, PVCs, StatefulSets, Helm releases, and current
    image versions for installed namespaces in scope.
-3. Compare current and candidate manifests. Classify changes by owner:
-   NVCF control plane, NVCF compute plane, LLS, caches, storage, or validation
-   artifact only.
+3. Compare current and candidate deployment manifests, stack templates, local
+   charts and rendered values. Classify changes by owner: NVCF control plane,
+   compute plane, shared observability, LLS, caches, storage, or validation.
+   An unchanged image manifest does not make a template-only sync a no-op.
 4. Resolve NVCF docs alignment for any NVCF version change and block Apply on
    unsupported or undocumented migration risk unless accepted by the operator.
 5. Mirror changed artifacts into the CSP-native registry. For NVCF stack-version
    upgrades using a private registry, verify the full candidate
-   `nvcf-self-managed-stack` and `nvcf-compute-plane-stack` artifact sets unless
-   another component is explicitly in scope.
-6. Run the NVCF in-place upgrade child skill when NVCF manifest entries
-   changed. It owns Cassandra, OpenBao, NATS, service, compute-plane, rollback,
-   and image-drift details.
+   `nvcf-self-managed-stack` and `nvcf-compute-plane-stack` published artifact
+   sets, plus `nvcf-observability-stack` when its profile is enabled. Validate
+   charts referenced by local paths from the bundled chart files and versions.
+6. Run the NVCF in-place upgrade child skill when NVCF manifest entries or
+   in-scope bundle/templates changed. It owns dependency ordering, shared
+   observability, the conditional hostname-policy pre-step, final upgrade
+   receipt, compute plane, rollback and manifest-based image-drift checks.
 7. Upgrade auxiliary services, caches, or storage only when their installed
    component versions are in scope and their artifacts are mirrored. For
    LLS/TURN, render with the exact post-renderer used for apply and run the child

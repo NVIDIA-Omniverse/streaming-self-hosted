@@ -1,5 +1,32 @@
 # CHANGELOG
 
+## 26.10.1
+
+See `image-manifest/manifest.yaml` for the complete chart and container image
+version set for this release.
+
+### Added
+
+- A release-specific README for 26.10.1.
+- Shared NVCF observability stack (`nvcf/observability`). The self-managed stack now defaults to the `control` observability profile, which deploys the NVCF function autoscaler. This addresses the missing autoscaler deployment noted in 26.10.0; scale-out also requires Compute Plane worker metrics.
+- An upgrade-receipt Helm stage that records the installed stack bundle version after the preceding stages succeed.
+- Explicit manifest pins for the task worker (`nvcf-worker-task-oss` `1.1.6`) and the NVCF/BYOO collectors (`0.160.0-nv-0.2.9`).
+
+### Updated
+
+- NVCF self-managed stack: `1.0.1` → `1.0.10`; compute-plane stack: `1.0.0` → `1.0.5`.
+- Skills require Helm 3 and Helmfile 1.1.x; Helm 4 is rejected.
+- In-place upgrade skills: `1.1.0` → `1.1.1`. They mirror the observability stack when its profile is enabled and apply the upgrade-receipt stage last.
+- NVCA and NVCA Operator: `3.10.0` → `3.10.3`; image credential helper: `0.11.1` → `0.11.3`.
+- Cassandra: `5.0.9-nv-2.0.5` → `5.0.9-nv-2.0.7`; Cassandra migrations: `0.17.6` → `0.17.8`.
+- OpenBao: `2.6.2-nv-1.3.4` → `2.6.3-nv-1.3.9`; OpenBao migrations: `0.19.5` → `0.19.11`.
+- Cert-manager components: `v1.20.2` → `v1.20.5`; NATS server: `2.14.6-alpine3.22` → `2.14.9-alpine3.22`; NATS config reloader: `0.24.0` → `0.25.0`.
+- ICMS: `0.7.2` → `0.7.7`; worker init: `1.2.1` → `1.2.4`; worker LLM credentials: `1.1.2` → `1.1.5`; worker utilities: `1.2.3` → `1.2.6`.
+- Container cache: `v1.1.36` → `v1.1.43`; proxy TLS certificates: `v1.2.10` → `v1.2.16`.
+- Storage Service and its Helm chart: `1.2.0` → `1.2.3`.
+- External source mappings for cert-manager, the Kubernetes utility image, and NATS dependencies identify their third-party registries.
+- README guidance identifies release version sources, explains HTTP Helm chart mirroring, and recommends OVDC for new cache deployments. GXCache remains deprecated and available for existing installations.
+
 ## 26.10.0
 
 ### Added

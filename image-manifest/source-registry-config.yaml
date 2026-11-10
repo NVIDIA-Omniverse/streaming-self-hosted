@@ -29,12 +29,27 @@
 upstream_plugins:
   # NVCF self-managed stack (control plane)
   nvcf_self_managed_stack:
-    gitlab_project_path: "ncp/nvcf/nvcf-self-managed-stack"
+    gitlab_project_path: "NVIDIA/nvcf"
     source_registry: "nvcr.io/nvidia/nvcf"
+    component_source_registries:
+      cert-manager-acmesolver: "quay.io/jetstack"
+      cert-manager-cainjector: "quay.io/jetstack"
+      cert-manager-controller: "quay.io/jetstack"
+      cert-manager-startupapicheck: "quay.io/jetstack"
+      cert-manager-webhook: "quay.io/jetstack"
+      k8s: "docker.io/alpine"
+      nats-box: "docker.io/natsio"
+      nats-server: "docker.io/synadia"
+      nats-server-config-reloader: "docker.io/natsio"
 
   # NVCF compute-plane stack (NVCA operator)
   nvcf_compute_plane_stack:
-    gitlab_project_path: "nvcf/nvcf"
+    gitlab_project_path: "NVIDIA/nvcf"
+    source_registry: "nvcr.io/nvidia/nvcf"
+  
+  # NVCF observability stack (OpenTelemetry + VictoriaMetrics)
+  nvcf_observability_stack:
+    gitlab_project_path: "NVIDIA/nvcf"
     source_registry: "nvcr.io/nvidia/nvcf"
 
   # Container cache

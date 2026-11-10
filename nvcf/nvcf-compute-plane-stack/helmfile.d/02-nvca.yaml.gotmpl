@@ -84,7 +84,7 @@ helmDefaults:
   # install/upgrade). Without them, `helm uninstall` gets no --timeout flag at
   # all and falls back to Helm's 5m hook-wait default, well under the
   # nvca-operator pre-delete hook's ~10m worst-case cordon-and-drain budget
-  # (see the nvca-operator chart values.yaml gracefulShutdown.cleanupTimeoutSeconds).
+  # (see deployments/nvca-operator/values.yaml gracefulShutdown.cleanupTimeoutSeconds).
   deleteWait: true
   deleteTimeout: 900
   wait: true
@@ -116,6 +116,11 @@ helmDefaults:
 {{- $otelCollectorEnabled := dig "enabled" false $otelCollector }}
 {{- $defaultOTelCollectorImageRepository := printf "%s/%s/nvcf-otel-collector" .Values.global.image.registry .Values.global.image.repository }}
 {{- $otelCollectorImageRepository := dig "imageRepository" $defaultOTelCollectorImageRepository $otelCollector }}
+
+{{- $byooOtelCollector := dig "byooOtelCollector" dict $nvcaOp }}
+{{- $defaultByooOtelCollectorImageRepository := printf "%s/%s/byoo-otel-collector" .Values.global.image.registry .Values.global.image.repository }}
+{{- $byooOtelCollectorImageRepository := dig "imageRepository" "" $byooOtelCollector | default $defaultByooOtelCollectorImageRepository }}
+{{- $byooOtelCollectorImageTag := dig "imageTag" "" $byooOtelCollector }}
 
 {{- $featureGateValues := dig "featureGateValues" list $selfManaged }}
 {{- $kaiSchedulerEnabled := dig "addons" "kaiScheduler" "enabled" false .Values }}
@@ -183,7 +188,7 @@ releases:
     # versions. The chart appVersion remains the operator image fallback when
     # no imageTag override is set.
     chart: nvcf/helm-nvca-operator
-    version: {{ dig "nvcf-compute-plane-stack" "helm-nvca-operator" "1.28.0" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
+    version: {{ dig "nvcf-compute-plane-stack" "helm-nvca-operator" "1.37.1" (readFile "../../../image-manifest/manifest.yaml" | fromYaml) }}
     namespace: nvca-operator
     values:
       - ../global.yaml.gotmpl
@@ -273,9 +278,7 @@ releases:
         webhookConfig:
           imageConfig:
             pullPolicy: IfNotPresent
-        # The published chart is named helm-nvca-operator, so Helm would otherwise
-        # derive resource names from that. Pin them to the operator's own name so
-        # this stack and a direct nvca-operator install produce the same objects.
+        # Keep resource names stable for the published helm-nvca-operator chart.
         nameOverride: nvca-operator
         fullnameOverride: nvca-operator
         {{- if $agentMergeConfig }}
@@ -300,8 +303,12 @@ releases:
         {{- $agent := dig "agent" dict $nvcaOp }}
         {{- $agentTolerations := dig "tolerations" list $agent }}
         {{- $workloadTolerations := dig "workload" "tolerations" list $agent }}
-        {{- if or $agentTolerations $workloadTolerations }}
         agent:
+          byooOtelCollector:
+            imageRepository: {{ $byooOtelCollectorImageRepository | quote }}
+            {{- with $byooOtelCollectorImageTag }}
+            imageTag: {{ . | quote }}
+            {{- end }}
           {{- with $agentTolerations }}
           tolerations:
 {{ toYaml . | nindent 12 }}
@@ -311,7 +318,6 @@ releases:
             tolerations:
 {{ toYaml . | nindent 14 }}
           {{- end }}
-        {{- end }}
     labels:
       release-group: workers
     wait: true
