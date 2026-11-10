@@ -1,73 +1,77 @@
 schema_version: '1.0'
-version: 26.10.0
-generated_at: '2026-10-12T23:19:32Z'
+version: 26.10.1
+generated_at: '2026-11-10T14:13:59Z'
 nvcf-self-managed-stack:
-  # source package: nvcf-self-managed-stack 1.0.1
+  # source package: nvcf-self-managed-stack 1.0.10
   admin-token-issuer-proxy: 1.1.2
-  cassandra: 5.0.9-nv-2.0.5
-  cert-manager-acmesolver: v1.20.2
-  cert-manager-cainjector: v1.20.2
-  cert-manager-controller: v1.20.2
-  cert-manager-startupapicheck: v1.20.2
-  cert-manager-webhook: v1.20.2
-  ess-agent: 1.4.1
+  cassandra: 5.0.9-nv-2.0.7
+  cert-manager-acmesolver: v1.20.5
+  cert-manager-cainjector: v1.20.5
+  cert-manager-controller: v1.20.5
+  cert-manager-startupapicheck: v1.20.5
+  cert-manager-webhook: v1.20.5
+  ess-agent: 1.4.4
   helm-admin-token-issuer-proxy: 1.5.3
-  helm-nvcf-api: 1.27.1
-  helm-nvcf-api-keys: 1.8.0
-  helm-nvcf-cassandra: 0.21.3
-  helm-nvcf-cert-manager: 0.1.0
-  helm-nvcf-ess-api: 1.8.2
+  helm-nvcf-api: 1.27.5
+  helm-nvcf-api-keys: 1.8.2
+  helm-nvcf-cassandra: 0.21.4
+  helm-nvcf-cert-manager: 0.2.0
+  helm-nvcf-ess-api: 1.8.3
   helm-nvcf-function-autoscaler: 0.5.2
-  helm-nvcf-gateway-routes: 1.18.2
+  helm-nvcf-gateway-routes: 1.18.3
   helm-nvcf-grpc-proxy: 1.7.4
-  helm-nvcf-invocation-service: 1.6.1
+  helm-nvcf-invocation-service: 1.6.2
   helm-nvcf-llm-api-gateway: 1.4.3
-  helm-nvcf-llm-request-router: 1.14.1
-  helm-nvcf-nats: 0.8.4
+  helm-nvcf-llm-request-router: 1.14.3
+  helm-nvcf-nats: 0.8.6
   helm-nvcf-nats-auth-callout-service: 1.2.1
-  helm-nvcf-notary-service: 1.6.0
-  helm-nvcf-nvct-api: 1.6.0
-  helm-nvcf-openbao-server: 0.32.6
+  helm-nvcf-notary-service: 1.6.1
+  helm-nvcf-nvct-api: 1.6.1
+  helm-nvcf-openbao-server: 0.32.9
   helm-nvcf-pki: 0.1.0
   helm-nvcf-rate-limiter: 1.2.1
-  helm-nvcf-sis: 2.4.0
+  helm-nvcf-sis: 2.4.2
   helm-nvcf-state-metrics: 1.0.2
-  helm-nvcf-ui: 1.1.2
+  helm-nvcf-ui: 1.1.4
+  helm-nvcf-upgrade-receipt: 0.1.0
   helm-nvcf-vanity-gateway: 0.5.0
   helm-reval: 1.4.1
-  icms-service-oss: 0.7.2
+  icms-service-oss: 0.7.7
   k8s: 1.37.0
-  llm-api-gateway: 0.14.2
-  nats-box: 0.19.7-nonroot
-  nats-server: 2.14.6-alpine3.22
-  nats-server-config-reloader: 0.24.0
-  nvcf-ai-api-gateway-service: 1.35.1
-  nvcf-api-keys-service: 1.9.1
-  nvcf-cassandra-migrations: 0.17.6
-  nvcf-ess: 0.5.0
-  nvcf-function-autoscaler: 1.21.8
-  nvcf-grpc-proxy: 1.33.5
-  nvcf-invocation-service: 0.12.1
-  nvcf-nats-auth-callout-service: 0.8.3
-  nvcf-notary: 1.14.1
-  nvcf-openbao: 2.6.2-nv-1.3.4
-  nvcf-openbao-migrations: 0.19.5
-  nvcf-ratelimiter: 1.17.3
-  nvcf-service-oss: 1.18.0
+  llm-api-gateway: 0.14.11
+  nats-box: 0.20.1-nonroot
+  nats-server: 2.14.9-alpine3.22
+  nats-server-config-reloader: 0.25.0
+  nvcf-ai-api-gateway-service: 1.35.3
+  nvcf-api-keys-service: 1.9.4
+  nvcf-cassandra-migrations: 0.17.8
+  nvcf-ess: 0.5.7
+  nvcf-function-autoscaler: 1.21.10
+  nvcf-grpc-proxy: 1.33.7
+  nvcf-invocation-service: 0.12.3
+  nvcf-nats-auth-callout-service: 0.8.6
+  nvcf-notary: 1.14.8
+  nvcf-openbao: 2.6.3-nv-1.3.9
+  nvcf-openbao-migrations: 0.19.11
+  nvcf-ratelimiter: 1.17.5
+  nvcf-service-oss: 1.18.2
   nvcf-state-metrics-service: 1.23.7
   nvcf-ui: 1.1.2
-  nvcf-worker-init-oss: 1.2.1
-  nvcf-worker-llm-credentials-oss: 1.1.2
-  nvcf-worker-utils-oss: 1.2.3
+  nvcf-worker-init-oss: 1.2.4
+  nvcf-worker-llm-credentials-oss: 1.1.5
+  nvcf-worker-task-oss: 1.1.6
+  nvcf-worker-utils-oss: 1.2.6
   # override package: nvcf_worker_niclls
-  # source version: 2.110.0
+  # source version: 2.118.2
   nvcf_worker_niclls: 2.117.1
-  nvct-service-oss: 1.66.0
+  nvct-service-oss: 1.66.2
   oss-vault-k8s: 1.7.4
-  reval-server: 0.20.2
-  stargate: 0.18.0
+  pylon: 0.18.3
+  reval-server: 0.20.3
+  stargate: 0.18.3
 nvcf-compute-plane-stack:
-  # source package: nvcf-compute-plane-stack 1.0.0
+  # source package: nvcf-compute-plane-stack 1.0.5
+  byoo-otel-collector: 0.160.0-nv-0.2.9
   crd-upgrader: v0.17.1
   grove-install-crds: v0.1.0-alpha.12
   grove-operator: v0.1.0-alpha.12
@@ -78,10 +82,11 @@ nvcf-compute-plane-stack:
   helm-nvcf-cluster-topology: 0.1.0
   kubernetes-operator: 1.4.2
   nats: 2.10.21-alpine
-  nats-server-config-reloader: 0.24.0
-  nvca: 3.10.0
-  nvca-operator: 3.10.0
-  nvcf-image-credential-helper: 0.11.1
+  nats-server-config-reloader: 0.25.0
+  nvca: 3.10.3
+  nvca-operator: 3.10.3
+  nvcf-image-credential-helper: 0.11.3
+  nvcf-otel-collector: 0.160.0-nv-0.2.9
   operator: v0.17.1
 nvcf-observability-stack:
   # source package: nvcf-observability-stack 1.0.0
@@ -95,8 +100,8 @@ nvcf-observability-stack:
   victoria-metrics: v1.150.0
 container_cache:
   helm-nvcf-container-cache: 0.25.22
-  nvcf-container-cache: v1.1.36
-  nvcf-proxy-tls-certs: v1.2.10
+  nvcf-container-cache: v1.1.43
+  nvcf-proxy-tls-certs: v1.2.16
 gxcache:
   gxcache: 0.8.2
   gxcache-init: 1e47f722
@@ -115,6 +120,6 @@ lls:
   turn: 4.0.2
 storage-api:
   helm-discovery-service: 2.3.11
-  helm-storage-service: 1.2.0
+  helm-storage-service: 1.2.3
   simple-nginx: 1.1.0
-  storage-service: 1.2.0
+  storage-service: 1.2.3

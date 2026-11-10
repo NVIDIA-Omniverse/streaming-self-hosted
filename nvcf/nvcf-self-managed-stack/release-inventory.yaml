@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+schemaVersion: 1
+# Inventory states are owned by this distributable. Other stack trees publish
+# their own release inventories and must not be referenced here.
+states:
+  - plane: control-plane
+    path: deploy/stacks/self-managed/helmfile.d/01-dependencies.yaml.gotmpl
+    fullOverrides:
+      - addons.llm.enabled=true
+      - addons.lls.enabled=true
+  - plane: control-plane
+    path: deploy/stacks/self-managed/helmfile.d/02-core.yaml.gotmpl
+    fullOverrides:
+      - addons.llm.enabled=true
+      - addons.vanityGateway.enabled=true
+      - addons.nvcfUi.enabled=true
+      - addons.lls.enabled=true
+  - plane: control-plane
+    path: deploy/stacks/self-managed/helmfile.d/03-observability.yaml.gotmpl
+    fullOverrides:
+      - observability.profile=control
+  - plane: control-plane
+    path: deploy/stacks/self-managed/helmfile.d/04-upgrade-receipt.yaml.gotmpl
+# Render the selected published chart packages and report their public destination.
+publishedChartRepository: https://helm.ngc.nvidia.com/nvidia/nvcf

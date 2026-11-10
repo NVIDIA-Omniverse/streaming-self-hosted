@@ -17,7 +17,7 @@ ML-framework operators (Grove, Dynamo) onto GPU clusters registered with an NVCF
 ```sh
 # 1. Export the control-plane profile from the self-managed control-plane stack.
 nvcf-cli self-hosted \
-  --control-plane-stack ../self-managed \
+  --control-plane-stack ../nvcf-self-managed-stack \
   control-plane profile export
 
 # 2. Initialize the CLI config used for registration.
@@ -43,7 +43,7 @@ that cluster so multiple clusters can be managed from a single checkout.
 Helmfile.
 
 By default, `register-cluster` reads
-`../self-managed/out/control-plane-profile.yaml`. Set
+`../nvcf-self-managed-stack/out/control-plane-profile.yaml`. Set
 `CONTROL_PLANE_PROFILE=/path/to/control-plane-profile.yaml` when the control
 and compute stacks are not sibling directories. The profile is the canonical
 handoff for account identity, service endpoints, Host overrides, and transport
@@ -171,11 +171,11 @@ Enabling `addons.kaiScheduler.enabled` or `addons.dynamoOperator.enabled` also
 adds the matching NVCA feature gate. Enabling KAI, Grove, or Dynamo permits
 their workload resource types in the NVCA validation policy.
 
-See [Gang Scheduling](../../../docs/compute-plane/cluster-management/gang-scheduling.md)
+See [Gang Scheduling](../../../docs/user/cluster-management/gang-scheduling.md)
 for atomic workload placement and
-[Topology-Aware Scheduling](../../../docs/compute-plane/cluster-management/topology-aware-scheduling.md)
+[Topology-Aware Scheduling](../../../docs/user/cluster-management/topology-aware-scheduling.md)
 for GPU clique placement. See
-[KAI Scheduler](../../../docs/compute-plane/cluster-management/kai-scheduler.md) for
+[KAI Scheduler](../../../docs/user/cluster-management/kai-scheduler.md) for
 queue configuration and standalone installation.
 
 ## Multi-Cluster Example

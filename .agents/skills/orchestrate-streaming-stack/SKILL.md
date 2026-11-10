@@ -45,7 +45,7 @@ Collect or discover this context before sequencing work:
 | Artifact mode | Plan, Generate, Deploy, or Recover. |
 | Storage target | Azure Blob, S3, S3-compatible object store, existing object store, generic Kubernetes storage provider, or filesystem adapter. For generic Kubernetes, consume `objectStorage` and credential mode from the provider capability report instead of assuming managed cloud identity. |
 | Cache target | OVDC, UCC, GXCache, NVCF container/proxy cache, or none. Prefer OVDC for shader cache when the workload needs Kit/write-render-worker shader caching. Treat NVCF container/proxy cache as required for ARB/validation unless the user explicitly declines registry/S3 proxy caching. |
-| NVCF stack path | User-provided extracted `nvcf-self-managed-stack` path, or repo-local sample path when the task is only planning. |
+| NVCF stack path | Existing extracted deployment or repo-local `nvcf/nvcf-self-managed-stack`, with the matching compute-plane and shared observability sibling directories. |
 
 For generic Kubernetes on cloud-hosted raw nodes, keep provider location and
 NVCF internal routing region separate. For example, EC2 nodes, ECR, and S3 may
@@ -88,15 +88,12 @@ Read the child skill before performing that phase. Open only the provider or com
 
 1. Confirm mode, CSP, account/subscription, region, cluster name, and whether commands will execute.
 2. Verify local tools for the selected path:
-   - Common: `kubectl`, `helm`, `jq`, `curl`, `python3`. Prefer the latest Helm
-     version that is compatible with the selected charts and plugins. Helm 4.x
-     is allowed only after `helm plugin list`, `helm dependency build` or
-     equivalent chart dependency checks, and the relevant `helm template` or
-     `helmfile template` pass. If compatibility fails, select a known-compatible
-     Helm 3.x binary and put it ahead of Helm 4 in `PATH`.
-   - NVCF: `helmfile` and `helm-diff`; prefer the version family validated by
-     the selected NVCF stack, and prove compatibility with `helmfile template`
-     before `helmfile sync`.
+   - Common: `kubectl`, `helm`, `jq`, `curl`, `python3`.
+   - NVCF: use Helm 3 and Helmfile 1.1.x with `helm-diff`. This source bundle
+     records Helm 3.21.4 and Helmfile 1.1.9; its Makefiles reject Helm 4 and
+     warn on other Helmfile families. Do not treat an isolated chart render
+     with Helm 4 as stack compatibility proof. Render with the supported
+     toolchain before `helmfile sync`.
    - Azure: `az`, and `terraform` only if generating Terraform artifacts.
    - AWS: `aws`, `terraform`.
    - Registry mirroring: `skopeo` or the child skill's selected mirror backend.
@@ -105,7 +102,12 @@ Read the child skill before performing that phase. Open only the provider or com
    `NGC_API_KEY_FILE` or a non-empty `NGC_API_KEY`; if only `NGC_API_KEY` is
    present, materialize it into a mode 600 file outside the repo for tools that
    require `NGC_API_KEY_FILE`.
-4. Inspect `image-manifest/manifest.yaml` for chart/image versions before pinning versions manually.
+4. Use `image-manifest/manifest.yaml` as the deployment chart/image version
+   authority. Upstream source inventories and stack `VERSION` files identify
+   source bundles only. Do not copy their older artifact pins
+   over the streaming manifest or infer tested compatibility from those files.
+   Reconcile rendered chart versions and image overrides with the streaming
+   manifest, including overrides in `environments/base.yaml`.
 5. Select the cache components before sizing infrastructure. When OVDC is in
    scope, record its replica count, memory profile, storage requirements, and
    placement policy as provider inputs; do not wait until the auxiliary-service
@@ -178,7 +180,11 @@ overrides and HTTP Helm catalog sources. Distinguish source configuration
 defects, authentication failures, unreleased artifacts, and unverified sources.
 Do not infer artifact unavailability from a failed OCI lookup alone.
 
-> **OCI vs non-OCI charts.** The manifest has a mix of OCI and non-OCI artifacts. Container images (`nvcr.io/...`) are already OCI and mirror as-is. Some Helm charts are published to an `https://` Helm repository (for example `helm.ngc.nvidia.com`). Those are not OCI and cannot be resolved by `global.helm.sources` (OCI) or mirrored directly. Before pointing the stack at your mirror, convert each `https://` chart to OCI: `helm repo add` / `helm pull` the `.tgz`, then `helm push <chart>.tgz oci://<your-registry>/<mirror-sub-path>`. Only OCI charts can live under `global.helm.sources`.
+> **OCI vs non-OCI charts.** The manifest has a mix of OCI and non-OCI artifacts. Container images (`nvcr.io/...`) are already OCI and mirror as-is. Some Helm charts are published to an `https://` Helm repository (for example `helm.ngc.nvidia.com`). For the synced NVCF stacks, `global.helm.sources.url` selects an HTTPS Helm repository; `registry` and `repository` select OCI. Direct HTTPS consumption is supported. When a private OCI mirror is required, pull each HTTP chart as a `.tgz` and push it to that mirror before selecting the OCI source.
+
+Validate charts referenced by local paths from the bundled `Chart.yaml` and
+templates. GitHub inventory URLs identify their source; verify the actual
+Helmfile chart path before attempting registry pulls.
 
 For generic Kubernetes with a private registry mirror, validate two credential
 paths before compute-plane validation: namespace pull secrets for platform pods
@@ -209,18 +215,16 @@ Gate: target registry contains required images/charts for NVCF, LLS, caches, and
 
 1. Load `nvcf-self-managed-prerequisite` for cluster prerequisites required by the selected stack.
 2. Load `nvcf-self-managed-installation` for the extracted `nvcf-self-managed-stack`.
-3. In `<nvcf-self-managed-stack>/environments/base.yaml`, set:
+3. In the selected `<nvcf-self-managed-stack>/environments/<env>.yaml`, set:
    ```yaml
-   addon:
+   addons:
      lls:
        enabled: true
    ```
-   If TURN enablement is not automatically derived from the addon flag, set this in `<nvcf-self-managed-stack>/global.yaml.gotmpl`:
-   ```yaml
-   notary:
-     turn:
-       enabled: true
-   ```
+   The synced stack reads `addons.lls.enabled` to configure SIS and TURN-secret
+   rotation. Verify that rendered mapping; do not use the obsolete singular
+   `addon` key or add unsupported `notary.turn` fields. Configure the separate
+   LLS/TURN deployment through its owning child skill.
    For streaming deployments, enable the NVCF rate limiter unless the selected
    release explicitly documents a no-rate-limiter mode. Mirror both
    `helm-nvcf-rate-limiter` and the `nvcf-ratelimiter` image into the selected
@@ -244,7 +248,16 @@ Gate: target registry contains required images/charts for NVCF, LLS, caches, and
    worker-facing sidecar images and service URLs. Do not allow SIS to keep
    upstream defaults such as public/HTTPS service names or stale `niclls`
    images while API advertises mirrored/current worker sidecars.
-7. Run `helmfile template` before `helmfile sync`.
+7. Keep `nvcf/observability` beside both stack directories. The control plane's
+   `00-observability-infrastructure.yaml.gotmpl` delegates to it when its profile
+   is enabled. Install shared observability once per cluster; retain
+   `stateMetrics.enabled=true` for the control-profile function autoscaler.
+8. Run `helmfile template` before `helmfile sync`. When applying selector-scoped
+   phases, run the control-plane `04-upgrade-receipt.yaml.gotmpl` stage only after
+   the selected phases pass; it has no `release-group` label and is otherwise
+   omitted by group selectors. Verify the receipt against the source stack
+   `VERSION`, and verify deployed chart/image versions separately against the
+   streaming image manifest.
 
 Gate: dependency namespaces are healthy, NVCF API/backend services are ready,
 API and SIS worker launch metadata are aligned, ingress routes exist, the
